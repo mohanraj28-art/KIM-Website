@@ -1,0 +1,579 @@
+// KIP Platform - Production-Ready Identity Management Schema
+// Comprehensive Prisma Schema for Auth, Multi-Tenant, RBAC, Billing
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// TENANTS (Top-level isolation unit)
+// ============================================================
+model Tenant {
+  id                 String    @id @default(cuid())
+  name               String
+  slug               String    @unique
+  domain             String?   @unique
+  logoUrl            String?
+  faviconUrl         String?
+  primaryColor       String?   @default("#6366f1")
+  plan               Plan      @default(FREE)
+  trialEndsAt        DateTime?
+  stripeCustomerId   String?   @unique
+  stripeSubscriptionId String? @unique
+  stripePriceId      String?
+  subscriptionStatus SubscriptionStatus @default(INACTIVE)
+  billingEmail       String?
+  maxUsers           Int       @default(10)
+  maxOrganizations   Int       @default(3)
+  mfaRequired        Boolean   @default(false)
+  allowedDomains     String[]
+  blockedDomains     String[]
+  sessionDuration    Int       @default(86400) // seconds
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  users          User[]
+  organizations  Organization[]
+  roles          Role[]
+  auditLogs      AuditLog[]
+  sessions       Session[]
+  webhooks       Webhook[]
+  apiKeys        ApiKey[]
+  emailTemplates EmailTemplate[]
+  invitations    Invitation[]
+
+  @@map("tenants")
+}
+
+// ============================================================
+// USERS
+// ============================================================
+model User {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  email               String
+  emailVerified       Boolean   @default(false)
+  emailVerifiedAt     DateTime?
+  phone               String?
+  phoneVerified       Boolean   @default(false)
+  phoneVerifiedAt     DateTime?
+  username            String?
+  firstName           String?
+  lastName            String?
+  displayName         String?
+  avatarUrl           String?
+  bio                 String?
+  locale              String?   @default("en")
+  timezone            String?   @default("UTC")
+  banned              Boolean   @default(false)
+  bannedAt            DateTime?
+  bannedReason        String?
+  locked              Boolean   @default(false)
+  lockedAt            DateTime?
+  externalId          String?
+  publicMetadata      Json?     @default("{}")
+  privateMetadata     Json?     @default("{}")
+  unsafeMetadata      Json?     @default("{}")
+  lastActiveAt        DateTime?
+  lastSignInAt        DateTime?
+  lastSignInIp        String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  passwords           Password[]
+  sessions            Session[]
+  socialAccounts      SocialAccount[]
+  mfaSettings         MfaSetting[]
+  organizationMembers OrganizationMember[]
+  auditLogs           AuditLog[]
+  passkeys            Passkey[]
+  notifications       Notification[]
+  devices             Device[]
+  sentInvitations     Invitation[] @relation("InvitationSender")
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, username])
+  @@index([tenantId])
+  @@index([email])
+  @@map("users")
+}
+
+// ============================================================
+// PASSWORDS
+// ============================================================
+model Password {
+  id          String   @id @default(cuid())
+  userId      String
+  hash        String
+  strength    Int?
+  compromised Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("passwords")
+}
+
+// ============================================================
+// SESSIONS
+// ============================================================
+model Session {
+  id           String    @id @default(cuid())
+  tenantId     String
+  userId       String
+  token        String    @unique
+  refreshToken String?   @unique
+  userAgent    String?
+  ipAddress    String?
+  country      String?
+  city         String?
+  deviceId     String?
+  deviceType   String?
+  browser      String?
+  os           String?
+  active       Boolean   @default(true)
+  expiresAt    DateTime
+  lastActiveAt DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+  revokedBy    String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([token])
+  @@map("sessions")
+}
+
+// ============================================================
+// SOCIAL ACCOUNTS (OAuth)
+// ============================================================
+model SocialAccount {
+  id               String   @id @default(cuid())
+  userId           String
+  provider         OAuthProvider
+  providerUserId   String
+  accessToken      String?
+  refreshToken     String?
+  tokenExpiresAt   DateTime?
+  scope            String?
+  email            String?
+  name             String?
+  avatarUrl        String?
+  rawProfile       Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+  @@map("social_accounts")
+}
+
+// ============================================================
+// PASSKEYS / WebAuthn
+// ============================================================
+model Passkey {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String?
+  credentialId  String   @unique
+  publicKey     String
+  counter       BigInt   @default(0)
+  deviceType    String?
+  backedUp      Boolean  @default(false)
+  transports    String[]
+  aaguid        String?
+  lastUsedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("passkeys")
+}
+
+// ============================================================
+// MFA SETTINGS
+// ============================================================
+model MfaSetting {
+  id          String    @id @default(cuid())
+  userId      String
+  type        MfaType
+  secret      String?
+  phoneNumber String?
+  verified    Boolean   @default(false)
+  backcodes   String[]
+  primary     Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("mfa_settings")
+}
+
+// ============================================================
+// VERIFICATION TOKENS (Email, Phone, Magic Links, OTP)
+// ============================================================
+model VerificationToken {
+  id        String            @id @default(cuid())
+  userId    String?
+  email     String?
+  phone     String?
+  token     String            @unique
+  type      VerificationTokenType
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  @@index([token])
+  @@map("verification_tokens")
+}
+
+// ============================================================
+// ORGANIZATIONS
+// ============================================================
+model Organization {
+  id               String    @id @default(cuid())
+  tenantId         String
+  name             String
+  slug             String
+  description      String?
+  logoUrl          String?
+  website          String?
+  industry         String?
+  size             String?
+  publicMetadata   Json?     @default("{}")
+  privateMetadata  Json?     @default("{}")
+  maxMembers       Int       @default(100)
+  adminDeleteProtection Boolean @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members     OrganizationMember[]
+  invitations Invitation[]
+  roles       Role[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("organizations")
+}
+
+// ============================================================
+// ORGANIZATION MEMBERS
+// ============================================================
+model OrganizationMember {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  roleId         String?
+  joinedAt       DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role?        @relation(fields: [roleId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+// ============================================================
+// INVITATIONS
+// ============================================================
+model Invitation {
+  id             String           @id @default(cuid())
+  tenantId       String
+  organizationId String?
+  email          String
+  roleId         String?
+  senderId       String?
+  token          String           @unique @default(cuid())
+  status         InvitationStatus @default(PENDING)
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime         @default(now())
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  sender       User?         @relation("InvitationSender", fields: [senderId], references: [id])
+
+  @@map("invitations")
+}
+
+// ============================================================
+// ROLES & PERMISSIONS (RBAC)
+// ============================================================
+model Role {
+  id             String    @id @default(cuid())
+  tenantId       String
+  organizationId String?
+  name           String
+  key            String
+  description    String?
+  isSystem       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  organization    Organization?        @relation(fields: [organizationId], references: [id])
+  permissions     RolePermission[]
+  members         OrganizationMember[]
+
+  @@unique([tenantId, key])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  description String?
+  category    String?
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ============================================================
+// AUDIT LOGS
+// ============================================================
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String?
+  actorId     String?
+  action      String
+  resource    String?
+  resourceId  String?
+  description String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  country     String?
+  result      AuditResult @default(SUCCESS)
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================
+// DEVICES
+// ============================================================
+model Device {
+  id          String    @id @default(cuid())
+  userId      String
+  fingerprint String?
+  name        String?
+  type        String?
+  os          String?
+  browser     String?
+  trusted     Boolean   @default(false)
+  lastSeenAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("devices")
+}
+
+// ============================================================
+// API KEYS
+// ============================================================
+model ApiKey {
+  id          String    @id @default(cuid())
+  tenantId    String
+  name        String
+  keyPrefix   String
+  keyHash     String
+  scopes      String[]
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+// ============================================================
+// WEBHOOKS
+// ============================================================
+model Webhook {
+  id          String   @id @default(cuid())
+  tenantId    String
+  url         String
+  secret      String
+  events      String[]
+  active      Boolean  @default(true)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id           String   @id @default(cuid())
+  webhookId    String
+  event        String
+  payload      Json
+  statusCode   Int?
+  response     String?
+  success      Boolean  @default(false)
+  attempts     Int      @default(0)
+  deliveredAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@map("webhook_deliveries")
+}
+
+// ============================================================
+// EMAIL TEMPLATES
+// ============================================================
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  tenantId  String
+  type      String   @unique
+  subject   String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("email_templates")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+model Notification {
+  id         String    @id @default(cuid())
+  userId     String
+  title      String
+  body       String
+  type       String
+  read       Boolean   @default(false)
+  readAt     DateTime?
+  actionUrl  String?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+enum Plan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  PAUSED
+}
+
+enum OAuthProvider {
+  GOOGLE
+  GITHUB
+  APPLE
+  FACEBOOK
+  MICROSOFT
+  TWITTER
+  LINKEDIN
+  DISCORD
+  SLACK
+  SPOTIFY
+  TWITCH
+  GITLAB
+  BITBUCKET
+  DROPBOX
+  BOX
+  SALESFORCE
+  NOTION
+  ZOOM
+  LINE
+  KAKAO
+  NAVER
+}
+
+enum MfaType {
+  TOTP
+  SMS
+  EMAIL
+  BACKUP_CODE
+}
+
+enum VerificationTokenType {
+  EMAIL_VERIFICATION
+  PHONE_VERIFICATION
+  PASSWORD_RESET
+  MAGIC_LINK
+  OTP
+  INVITE
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum AuditResult {
+  SUCCESS
+  FAILURE
+  WARNING
+}
