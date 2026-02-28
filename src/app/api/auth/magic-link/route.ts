@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { runQuery } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { sendMagicLinkEmail } from '@/lib/email'
 import { rateLimit } from '@/lib/rate-limit'
 import { v4 as uuidv4 } from 'uuid'
@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 const magicLinkSchema = z.object({
     email: z.string().email(),
-    tenantId: z.string().optional().default('default'),
+    accountId: z.string().optional().default('default'),
 })
 
 export async function POST(req: NextRequest) {
@@ -19,31 +19,26 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json()
-        const { email, tenantId } = magicLinkSchema.parse(body)
+        const { email, accountId } = magicLinkSchema.parse(body)
 
         const token = uuidv4()
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
-        const now = new Date().toISOString()
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000)
 
-        // Create VerificationToken node (unlinked — email may not exist)
-        await runQuery(
-            `CREATE (v:VerificationToken {
-                id: $id,
-                email: $email,
-                token: $token,
+        // Create VerificationToken
+        await prisma.verificationToken.create({
+            data: {
+                email,
+                token,
                 type: 'MAGIC_LINK',
-                tenantId: $tenantId,
-                expiresAt: $expiresAt,
-                createdAt: $now,
-                usedAt: null
-            })`,
-            { id: uuidv4(), email, token, tenantId, expiresAt, now }
-        )
+                expiresAt,
+            }
+        })
 
         sendMagicLinkEmail(email, token).catch(console.error)
 
         return NextResponse.json({ success: true, message: 'If an account exists, a magic link has been sent.' })
-    } catch {
+    } catch (error) {
+        console.error('[Magic Link API Error]:', error)
         return NextResponse.json({ error: 'Failed to send magic link' }, { status: 500 })
     }
 }
@@ -55,32 +50,27 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Token required' }, { status: 400 })
     }
 
-    const result = await runQuery(
-        `MATCH (v:VerificationToken {token: $token, type: 'MAGIC_LINK'})
-         RETURN v`,
-        { token }
-    )
+    const verificationToken = await prisma.verificationToken.findUnique({
+        where: { token }
+    })
 
-    if (result.records.length === 0) {
+    if (!verificationToken || verificationToken.type !== 'MAGIC_LINK') {
         return NextResponse.json({ error: 'Invalid or expired link' }, { status: 400 })
     }
 
-    const v = result.records[0].get('v').properties
-
-    if (v.usedAt) {
+    if (verificationToken.usedAt) {
         return NextResponse.json({ error: 'This link has already been used' }, { status: 400 })
     }
 
-    if (v.expiresAt < new Date().toISOString()) {
+    if (verificationToken.expiresAt < new Date()) {
         return NextResponse.json({ error: 'This link has expired. Please request a new one.' }, { status: 400 })
     }
 
     // Mark as used
-    await runQuery(
-        `MATCH (v:VerificationToken {token: $token})
-         SET v.usedAt = $now`,
-        { token, now: new Date().toISOString() }
-    )
+    await prisma.verificationToken.update({
+        where: { id: verificationToken.id },
+        data: { usedAt: new Date() }
+    })
 
-    return NextResponse.json({ success: true, email: v.email })
+    return NextResponse.json({ success: true, email: verificationToken.email })
 }

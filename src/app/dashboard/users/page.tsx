@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { Users, Search, Filter, MoreVertical, Shield, Ban, Mail, Plus, Download, CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react'
+import { Users, Search, Filter, MoreVertical, Shield, Ban, Mail, Plus, Download, CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, UserPlus, Key } from 'lucide-react'
 import { formatRelativeTime, getInitials } from '@/lib/utils'
 
 interface ApiUser {
@@ -37,6 +37,12 @@ export default function UsersPage() {
     const [loading, setLoading] = useState(true)
     const [page, setPage] = useState(1)
 
+    // Create user state
+    const [showCreateModal, setShowCreateModal] = useState(false)
+    const [createForm, setCreateForm] = useState({ email: '', firstName: '', lastName: '', password: '' })
+    const [creating, setCreating] = useState(false)
+    const [createError, setCreateError] = useState<string | null>(null)
+
     // Debounce search
     useEffect(() => {
         const t = setTimeout(() => { setDebouncedSearch(search); setPage(1) }, 400)
@@ -64,6 +70,34 @@ export default function UsersPage() {
 
     useEffect(() => { fetchUsers() }, [fetchUsers])
 
+    const handleCreateUser = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setCreating(true)
+        setCreateError(null)
+        try {
+            const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${accessToken}`
+                },
+                body: JSON.stringify(createForm)
+            })
+            const data = await res.json()
+            if (data.success) {
+                setShowCreateModal(false)
+                setCreateForm({ email: '', firstName: '', lastName: '', password: '' })
+                fetchUsers()
+            } else {
+                setCreateError(data.error)
+            }
+        } catch (err: any) {
+            setCreateError(err.message)
+        } finally {
+            setCreating(false)
+        }
+    }
+
     const toggleSelect = (id: string) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
     const toggleAll = () => setSelectedIds(selectedIds.length === users.length ? [] : users.map(u => u.id))
 
@@ -87,8 +121,8 @@ export default function UsersPage() {
                     <button className="btn btn-secondary" style={{ gap: 8 }}>
                         <Download size={14} /> Export
                     </button>
-                    <button className="btn btn-primary" style={{ gap: 8 }}>
-                        <Plus size={14} /> Invite user
+                    <button onClick={() => setShowCreateModal(true)} className="btn btn-primary" style={{ gap: 8 }}>
+                        <Plus size={14} /> Create User
                     </button>
                 </div>
             </div>
@@ -246,6 +280,101 @@ export default function UsersPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Create User Modal */}
+            {showCreateModal && (
+                <div className="modal-overlay" style={{ display: 'flex' }}>
+                    <div className="modal-content" style={{ maxWidth: 460, animation: 'modalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                            <div>
+                                <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <UserPlus size={20} color="#6366f1" />
+                                    Add New User
+                                </h2>
+                                <p style={{ color: '#8b949e', fontSize: 13, marginTop: 4 }}>Add a user to your organization workspace.</p>
+                            </div>
+                            <button onClick={() => setShowCreateModal(false)} className="btn btn-ghost btn-icon" style={{ width: 32, height: 32 }}>
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                            {createError && (
+                                <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(248,81,73,0.1)', border: '1px solid rgba(248,81,73,0.2)', color: '#f85149', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <XCircle size={14} /> {createError}
+                                </div>
+                            )}
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                <div className="form-group">
+                                    <label className="label">First Name</label>
+                                    <input
+                                        type="text"
+                                        className="input"
+                                        placeholder="Jane"
+                                        required
+                                        value={createForm.firstName}
+                                        onChange={e => setCreateForm({ ...createForm, firstName: e.target.value })}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label className="label">Last Name</label>
+                                    <input
+                                        type="text"
+                                        className="input"
+                                        placeholder="Doe"
+                                        required
+                                        value={createForm.lastName}
+                                        onChange={e => setCreateForm({ ...createForm, lastName: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="label">Email Address</label>
+                                <div style={{ position: 'relative' }}>
+                                    <Mail size={14} color="#484f58" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+                                    <input
+                                        type="email"
+                                        className="input"
+                                        placeholder="jane.doe@example.com"
+                                        style={{ paddingLeft: 38 }}
+                                        required
+                                        value={createForm.email}
+                                        onChange={e => setCreateForm({ ...createForm, email: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="label">Initial Password (Optional)</label>
+                                <div style={{ position: 'relative' }}>
+                                    <Key size={14} color="#484f58" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+                                    <input
+                                        type="password"
+                                        className="input"
+                                        placeholder="••••••••"
+                                        style={{ paddingLeft: 38 }}
+                                        value={createForm.password}
+                                        onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
+                                    />
+                                </div>
+                                <p style={{ fontSize: 11, color: '#484f58', marginTop: 6 }}>If empty, the user will need to set their password via magic link.</p>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary" style={{ flex: 1 }} disabled={creating}>
+                                    Cancel
+                                </button>
+                                <button type="submit" className="btn btn-primary" style={{ flex: 1, gap: 10 }} disabled={creating}>
+                                    {creating ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                                    Create User
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

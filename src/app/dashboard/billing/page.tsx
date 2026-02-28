@@ -10,7 +10,7 @@ const PLANS = [
         period: 'forever',
         desc: 'For personal projects',
         color: '#8b949e',
-        features: ['10 users', '1 organization', 'Email/password', '3 OAuth providers', 'Basic audit logs', 'Community support'],
+        features: ['10 users', '1 tenant', 'Email/password', '3 OAuth providers', 'Basic audit logs', 'Community support'],
         current: false,
     },
     {
@@ -19,7 +19,7 @@ const PLANS = [
         period: 'per month',
         desc: 'For small teams',
         color: '#6366f1',
-        features: ['100 users', '5 organizations', 'All auth methods', 'All OAuth providers', 'MFA & magic links', 'Advanced audit logs', 'Email support'],
+        features: ['100 users', '5 tenants', 'All auth methods', 'All OAuth providers', 'MFA & magic links', 'Advanced audit logs', 'Email support'],
         current: true,
     },
     {
@@ -29,7 +29,7 @@ const PLANS = [
         desc: 'For scaling companies',
         color: '#8b5cf6',
         popular: true,
-        features: ['1,000 users', '25 organizations', 'Passkeys / WebAuthn', 'Custom domains', 'Webhooks & API keys', 'White-label branding', 'Priority support', 'SLA guarantee'],
+        features: ['1,000 users', '25 tenants', 'Passkeys / WebAuthn', 'Custom domains', 'Webhooks & API keys', 'White-label branding', 'Priority support', 'SLA guarantee'],
         current: false,
     },
     {
@@ -38,14 +38,14 @@ const PLANS = [
         period: 'custom',
         desc: 'For large organizations',
         color: '#f0883e',
-        features: ['Unlimited users', 'Unlimited orgs', 'SAML SSO', 'Custom SLA', 'Dedicated infra', 'SOC2 compliance', '24/7 support'],
+        features: ['Unlimited users', 'Unlimited tenants', 'SAML SSO', 'Custom SLA', 'Dedicated infra', 'SOC2 compliance', '24/7 support'],
         current: false,
     },
 ]
 
 const USAGE = [
     { label: 'Users', used: 23, total: 100, color: '#6366f1' },
-    { label: 'Organizations', used: 2, total: 5, color: '#8b5cf6' },
+    { label: 'Tenants', used: 2, total: 5, color: '#8b5cf6' },
     { label: 'Monthly active users', used: 18, total: 100, color: '#3fb950' },
     { label: 'API requests (today)', used: 4821, total: 10000, color: '#f0883e' },
 ]

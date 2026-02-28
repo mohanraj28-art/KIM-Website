@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
-import { runQuery } from '@/lib/db'
+import { prisma } from '@/lib/db'
+import { SubscriptionStatus } from '@prisma/client'
 
 export async function POST(req: NextRequest) {
     const body = await req.arrayBuffer()
@@ -26,86 +27,72 @@ export async function POST(req: NextRequest) {
     try {
         switch (event.type) {
             case 'checkout.session.completed': {
-                const session = event.data.object as {
-                    metadata?: { tenantId?: string }
-                    customer?: string | null
-                    subscription?: string | null
-                }
-                const tenantId = session.metadata?.tenantId
-                if (!tenantId) break
+                const session = event.data.object as any
+                const accountId = session.metadata?.accountId
+                if (!accountId) break
 
-                await runQuery(
-                    `MATCH (t:Tenant {id: $tenantId})
-                     SET t.stripeCustomerId = $customerId,
-                         t.stripeSubscriptionId = $subscriptionId,
-                         t.subscriptionStatus = 'ACTIVE'`,
-                    {
-                        tenantId,
-                        customerId: session.customer ?? null,
-                        subscriptionId: session.subscription ?? null,
+                await prisma.account.update({
+                    where: { id: accountId },
+                    data: {
+                        stripeCustomerId: session.customer ?? null,
+                        stripeSubscriptionId: session.subscription ?? null,
+                        subscriptionStatus: 'ACTIVE' as SubscriptionStatus,
                     }
-                )
+                })
                 break
             }
 
             case 'customer.subscription.updated': {
-                const sub = event.data.object as {
-                    metadata?: { tenantId?: string }
-                    status?: string
-                    trial_end?: number | null
-                    items?: { data?: Array<{ price?: { id?: string } }> }
+                const sub = event.data.object as any
+                const accountId = sub.metadata?.accountId
+                if (!accountId) break
+
+                const statusMap: Record<string, SubscriptionStatus> = {
+                    'active': 'ACTIVE',
+                    'trialing': 'TRIALING',
+                    'past_due': 'PAST_DUE',
+                    'canceled': 'CANCELED',
+                    'unpaid': 'INACTIVE',
+                    'incomplete': 'INACTIVE',
                 }
-                const tenantId = sub.metadata?.tenantId
-                if (!tenantId) break
 
-                const status =
-                    sub.status === 'active' ? 'ACTIVE' :
-                        sub.status === 'trialing' ? 'TRIALING' :
-                            sub.status === 'past_due' ? 'PAST_DUE' :
-                                sub.status === 'canceled' ? 'CANCELED' : 'INACTIVE'
+                const status = statusMap[sub.status] || 'INACTIVE'
 
-                await runQuery(
-                    `MATCH (t:Tenant {id: $tenantId})
-                     SET t.subscriptionStatus = $status,
-                         t.trialEndsAt = $trialEndsAt,
-                         t.stripePriceId = $priceId`,
-                    {
-                        tenantId,
-                        status,
-                        trialEndsAt: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
-                        priceId: sub.items?.data?.[0]?.price?.id ?? null,
+                await prisma.account.update({
+                    where: { id: accountId },
+                    data: {
+                        subscriptionStatus: status,
+                        trialEndsAt: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
+                        stripePriceId: sub.items?.data?.[0]?.price?.id ?? null,
                     }
-                )
+                })
                 break
             }
 
             case 'customer.subscription.deleted': {
-                const sub = event.data.object as { metadata?: { tenantId?: string } }
-                const tenantId = sub.metadata?.tenantId
-                if (!tenantId) break
+                const sub = event.data.object as any
+                const accountId = sub.metadata?.accountId
+                if (!accountId) break
 
-                await runQuery(
-                    `MATCH (t:Tenant {id: $tenantId})
-                     SET t.subscriptionStatus = 'CANCELED', t.stripeSubscriptionId = null`,
-                    { tenantId }
-                )
+                await prisma.account.update({
+                    where: { id: accountId },
+                    data: {
+                        subscriptionStatus: 'CANCELED' as SubscriptionStatus,
+                        stripeSubscriptionId: null,
+                    }
+                })
                 break
             }
 
             case 'invoice.payment_failed': {
-                const invoice = event.data.object as { customer?: string | null }
-                const tenantResult = await runQuery(
-                    `MATCH (t:Tenant {stripeCustomerId: $customerId})
-                     RETURN t.id AS id LIMIT 1`,
-                    { customerId: invoice.customer ?? '' }
-                )
-                if (tenantResult.records.length > 0) {
-                    const tenantId = tenantResult.records[0].get('id')
-                    await runQuery(
-                        `MATCH (t:Tenant {id: $tenantId})
-                         SET t.subscriptionStatus = 'PAST_DUE'`,
-                        { tenantId }
-                    )
+                const invoice = event.data.object as any
+                if (invoice.customer) {
+                    await prisma.account.updateMany({
+                        where: { stripeCustomerId: invoice.customer },
+                        data: {
+                            subscriptionStatus: 'PAST_DUE' as SubscriptionStatus,
+                        }
+                    })
                 }
                 break
             }

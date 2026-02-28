@@ -3,16 +3,16 @@
 
 :root {
   /* Brand Colors */
-  --kip-50: #eef2ff;
-  --kip-100: #e0e7ff;
-  --kip-200: #c7d2fe;
-  --kip-300: #a5b4fc;
-  --kip-400: #818cf8;
-  --kip-500: #6366f1;
-  --kip-600: #4f46e5;
-  --kip-700: #4338ca;
-  --kip-800: #3730a3;
-  --kip-900: #312e81;
+  --kaappu-50: #eef2ff;
+  --kaappu-100: #e0e7ff;
+  --kaappu-200: #c7d2fe;
+  --kaappu-300: #a5b4fc;
+  --kaappu-400: #818cf8;
+  --kaappu-500: #6366f1;
+  --kaappu-600: #4f46e5;
+  --kaappu-700: #4338ca;
+  --kaappu-800: #3730a3;
+  --kaappu-900: #312e81;
 
   /* Violet accent */
   --violet-400: #a78bfa;
@@ -214,7 +214,7 @@ h6 {
 
 .btn-secondary:hover {
   background: rgba(255, 255, 255, 0.1);
-  border-color: var(--kip-500);
+  border-color: var(--kaappu-500);
 }
 
 .btn-ghost {
@@ -282,7 +282,7 @@ h6 {
 }
 
 .input:focus {
-  border-color: var(--kip-500);
+  border-color: var(--kaappu-500);
   background: rgba(99, 102, 241, 0.05);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
@@ -893,8 +893,8 @@ tr:hover td {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -902,16 +902,26 @@ tr:hover td {
   padding: 24px;
 }
 
-.modal {
+.modal-content {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 20px;
+  border-radius: 24px;
   padding: 32px;
   width: 100%;
-  max-width: 480px;
   position: relative;
-  animation: fadeIn 0.2s ease;
-  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 /* ============================================================

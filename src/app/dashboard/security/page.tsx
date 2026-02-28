@@ -35,7 +35,7 @@ export default function SecurityPage() {
                 <AlertTriangle size={16} color="#d29922" style={{ flexShrink: 0, marginTop: 1 }} />
                 <div>
                     <p style={{ fontSize: 13, fontWeight: 600, color: '#d29922', marginBottom: 2 }}>Security Recommendations</p>
-                    <p style={{ fontSize: 12, color: '#8b949e' }}>3 security improvements are available. Enable MFA enforcement and review session settings.</p>
+                    <p style={{ fontSize: 12, color: '#8b949e' }}>4 security improvements are available. Enable MFA enforcement, review session settings, and configure Privileged Access workflows.</p>
                 </div>
                 <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto', flexShrink: 0 }}>Review</button>
             </div>
@@ -111,6 +111,7 @@ export default function SecurityPage() {
                             { name: 'Passkeys (WebAuthn)', enabled: false },
                             { name: 'SAML SSO', enabled: false },
                             { name: 'Apple OAuth', enabled: true },
+                            { name: 'LinkedIn OAuth', enabled: true },
                         ].map((method, i) => (
                             <div key={i} style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',

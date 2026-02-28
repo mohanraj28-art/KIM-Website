@@ -70,7 +70,7 @@ export function getTokenFromRequest(req: NextRequest): string | null {
     }
 
     // Check cookie
-    const cookieToken = req.cookies.get('kip_token')?.value
+    const cookieToken = req.cookies.get('kaappu_token')?.value
     if (cookieToken) return cookieToken
 
     // Debug: Log all cookie names if token is missing

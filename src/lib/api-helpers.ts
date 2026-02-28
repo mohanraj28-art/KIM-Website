@@ -1,83 +1,112 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserFromRequest } from '@/lib/auth/jwt'
-import { runQuery } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/rate-limit'
 
 export type ApiContext = {
     userId: string
-    tenantId: string
+    accountId: string // formerly tenantId
     sessionId: string
     email: string
+    params: any
 }
 
 type Handler = (req: NextRequest, ctx: ApiContext) => Promise<NextResponse>
 
 export function withAuth(handler: Handler) {
-    return async function routeHandler(req: NextRequest): Promise<NextResponse> {
-        const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
-        const limited = await rateLimit(ip, 100, 60)
-        if (!limited.success) {
-            return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+    return async function routeHandler(
+        req: NextRequest,
+        context?: { params: Promise<any> | any }
+    ): Promise<NextResponse> {
+        try {
+            const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
+            const limited = await rateLimit(ip, 100, 60)
+            if (!limited.success) {
+                return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+            }
+
+            const payload = await getUserFromRequest(req)
+            if (!payload) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            }
+
+            // Verify session is still valid in PostgreSQL
+            const session = await prisma.session.findFirst({
+                where: {
+                    id: payload.sid,
+                    userId: payload.sub,
+                    active: true,
+                    expiresAt: {
+                        gt: new Date()
+                    }
+                },
+                select: { id: true }
+            })
+
+            if (!session) {
+                return NextResponse.json({ error: 'Session expired or revoked' }, { status: 401 })
+            }
+
+            // Update last active timestamp
+            await prisma.session.update({
+                where: { id: payload.sid },
+                data: { lastActiveAt: new Date() }
+            })
+
+            const ctx: ApiContext = {
+                userId: payload.sub,
+                accountId: payload.tid, // tid is kept as accountId
+                sessionId: payload.sid,
+                email: payload.email,
+                params: context?.params || {}
+            }
+
+            return await handler(req, ctx)
+        } catch (error: unknown) {
+            console.error('[API Auth] Error:', error)
+            const message = error instanceof Error ? error.message : 'Internal Server Error'
+            return NextResponse.json({
+                success: false,
+                error: message
+            }, { status: 500 })
         }
-
-        const payload = await getUserFromRequest(req)
-        if (!payload) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-
-        // Verify session is still valid in Neo4j
-        const now = new Date().toISOString()
-        const sessionResult = await runQuery(
-            `MATCH (u:User {id: $userId})-[:HAS_SESSION]->(s:Session {id: $sessionId, active: true})
-             WHERE s.expiresAt > $now
-             RETURN s.id AS id`,
-            { userId: payload.sub, sessionId: payload.sid, now }
-        )
-
-        if (sessionResult.records.length === 0) {
-            return NextResponse.json({ error: 'Session expired or revoked' }, { status: 401 })
-        }
-
-        // Update last active timestamp
-        await runQuery(
-            `MATCH (s:Session {id: $sessionId})
-             SET s.lastActiveAt = $now`,
-            { sessionId: payload.sid, now }
-        )
-
-        const ctx: ApiContext = {
-            userId: payload.sub,
-            tenantId: payload.tid,
-            sessionId: payload.sid,
-            email: payload.email,
-        }
-
-        return handler(req, ctx)
     }
 }
 
-
-
 export function withAdminAuth(handler: Handler) {
     return withAuth(async (req, ctx) => {
-        // Check if user has admin role via Neo4j
-        const adminResult = await runQuery(
-            `OPTIONAL MATCH (u:User {id: $userId})-[:IS_MEMBER]->(org:Organization)
-             -[:HAS_MEMBER]->(m:OrganizationMember)-[:HAS_ROLE]->(r:Role)
-             WHERE r.key IN ['admin', 'super_admin', 'owner']
-             WITH u, m
-             OPTIONAL MATCH (t:Tenant {id: $tenantId})<-[:BELONGS_TO]-(firstUser:User)
-             WHERE firstUser.createdAt = t.createdAt
-             RETURN m.id AS memberRole, firstUser.id AS ownerId`,
-            { userId: ctx.userId, tenantId: ctx.tenantId }
-        )
+        // Check if user has admin role via PostgreSQL (Check across Tenants)
+        const member = await prisma.tenantMember.findFirst({
+            where: {
+                userId: ctx.userId,
+                role: {
+                    key: {
+                        in: ['admin', 'super_admin', 'owner']
+                    }
+                }
+            },
+            include: {
+                role: true
+            }
+        })
 
-        const isAdmin = adminResult.records.some(r =>
-            r.get('memberRole') !== null || r.get('ownerId') === ctx.userId
-        )
+        if (!member) {
+            // Check if user is the account owner (fallback)
+            const account = await prisma.account.findUnique({
+                where: { id: ctx.accountId },
+                include: {
+                    users: {
+                        orderBy: { createdAt: 'asc' },
+                        take: 1
+                    }
+                }
+            })
 
-        if (!isAdmin) {
-            return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
+            const isOwner = account?.users[0]?.id === ctx.userId
+
+            if (!isOwner) {
+                return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
+            }
         }
 
         return handler(req, ctx)

@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { signInWithPassword } from '@/lib/auth/auth'
 import { rateLimit } from '@/lib/rate-limit'
-import { runQuery } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { z } from 'zod'
-import { v4 as uuidv4 } from 'uuid'
 
 const signInSchema = z.object({
     email: z.string().email(),
     password: z.string().min(1),
-    tenantId: z.string(),
+    accountId: z.string(), // formerly tenantId
 })
 
 export async function POST(req: NextRequest) {
@@ -25,36 +24,37 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid credentials format' }, { status: 400 })
         }
 
-        const { email, password, tenantId } = parsed.data
+        const { email, password, accountId } = parsed.data
 
-        // Ensure tenant node exists
-        await runQuery(
-            `MERGE (t:Tenant {id: $tenantId})
-             ON CREATE SET t.name = 'Default', t.slug = $tenantId, t.createdAt = $now`,
-            { tenantId, now: new Date().toISOString() }
-        )
+        // Ensure account exists
+        await prisma.account.upsert({
+            where: { id: accountId },
+            create: {
+                id: accountId,
+                name: 'Default',
+                slug: accountId,
+            },
+            update: {}
+        })
 
         const userAgent = req.headers.get('user-agent') ?? undefined
-        const result = await signInWithPassword(email, password, tenantId, ip, userAgent)
+        const result = await signInWithPassword(email, password, accountId, ip, userAgent)
 
         // Audit log
-        await runQuery(
-            `MATCH (u:User {id: $userId})
-             CREATE (a:AuditLog {
-                 id: $id,
-                 action: 'user.signed_in',
-                 result: 'SUCCESS',
-                 ipAddress: $ip,
-                 userAgent: $ua,
-                 tenantId: $tenantId,
-                 createdAt: $now
-             })<-[:HAS_AUDIT_LOG]-(u)`,
-            { id: uuidv4(), userId: result.user.id, ip, ua: userAgent ?? null, tenantId, now: new Date().toISOString() }
-        )
+        await prisma.auditLog.create({
+            data: {
+                action: 'user.signed_in',
+                result: 'SUCCESS',
+                ipAddress: ip,
+                userAgent: userAgent ?? null,
+                accountId: accountId,
+                userId: result.user.id
+            }
+        })
 
         const response = NextResponse.json({ success: true, data: result })
-        console.log(`[SignIn] Setting kip_token cookie for user: ${email}`);
-        response.cookies.set('kip_token', result.accessToken, {
+        console.log(`[SignIn] Setting kaappu_token cookie for user: ${email}`);
+        response.cookies.set('kaappu_token', result.accessToken, {
             httpOnly: true,
             secure: false, // Changed for local development testing
             sameSite: 'lax',
@@ -65,6 +65,13 @@ export async function POST(req: NextRequest) {
         return response
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Sign in failed'
-        return NextResponse.json({ error: message }, { status: 401 })
+        console.error('[SignIn API Error]:', error)
+
+        // Distinguish between auth errors (401) and server errors (500)
+        const isAuthError = message.includes('email') || message.includes('password') || message.includes('credentials')
+        return NextResponse.json(
+            { error: message },
+            { status: isAuthError ? 401 : 500 }
+        )
     }
 }

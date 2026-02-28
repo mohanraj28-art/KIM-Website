@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { runQuery } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { createSession } from '@/lib/auth/auth'
-import { v4 as uuidv4 } from 'uuid'
+import { OAuthProvider } from '@prisma/client'
 
 const OAUTH_CONFIGS: Record<string, {
     tokenUrl: string
@@ -26,6 +26,18 @@ const OAUTH_CONFIGS: Record<string, {
         userUrl: 'https://graph.microsoft.com/v1.0/me',
         clientId: process.env.MICROSOFT_CLIENT_ID,
         clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+    },
+    linkedin: {
+        tokenUrl: 'https://www.linkedin.com/oauth/v2/accessToken',
+        userUrl: 'https://api.linkedin.com/v2/userinfo',
+        clientId: process.env.LINKEDIN_CLIENT_ID,
+        clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+    },
+    apple: {
+        tokenUrl: 'https://appleid.apple.com/auth/token',
+        userUrl: '',
+        clientId: process.env.APPLE_CLIENT_ID,
+        clientSecret: process.env.APPLE_CLIENT_SECRET,
     },
     discord: {
         tokenUrl: 'https://discord.com/api/oauth2/token',
@@ -91,114 +103,106 @@ export async function GET(
             return NextResponse.redirect(new URL('/sign-in?error=no_email', process.env.NEXT_PUBLIC_APP_URL!))
         }
 
-        const tenantId = 'default'
-        const now = new Date().toISOString()
+        const accountId = 'default'
 
-        // Ensure default tenant node
-        await runQuery(
-            `MERGE (t:Tenant {id: $tenantId})
-             ON CREATE SET t.name = 'Default', t.slug = $tenantId, t.createdAt = $now`,
-            { tenantId, now }
-        )
+        // Ensure default account exists
+        await prisma.account.upsert({
+            where: { id: accountId },
+            create: {
+                id: accountId,
+                name: 'Default',
+                slug: accountId,
+            },
+            update: {}
+        })
+
+        const oauthProvider = provider.toUpperCase() as OAuthProvider
 
         // Find existing user or create new one
-        const existingResult = await runQuery(
-            `MATCH (u:User {email: $email})-[:BELONGS_TO]->(:Tenant {id: $tenantId})
-             RETURN u LIMIT 1`,
-            { email, tenantId }
-        )
+        let user = await prisma.user.findFirst({
+            where: {
+                email,
+                accountId
+            }
+        })
 
-        let userId: string
-        if (existingResult.records.length > 0) {
-            userId = existingResult.records[0].get('u').properties.id
-
-            // Upsert social account node
-            await runQuery(
-                `MATCH (u:User {id: $userId})
-                 MERGE (u)-[:HAS_SOCIAL]->(sa:SocialAccount {provider: $provider})
-                 ON CREATE SET
-                     sa.id = $saId,
-                     sa.providerUserId = $providerUserId,
-                     sa.accessToken = $accessToken,
-                     sa.refreshToken = $refreshToken,
-                     sa.createdAt = $now
-                 ON MATCH SET
-                     sa.providerUserId = $providerUserId,
-                     sa.accessToken = $accessToken,
-                     sa.updatedAt = $now`,
-                {
-                    userId, saId: uuidv4(), provider: provider.toUpperCase(),
-                    providerUserId, accessToken: tokenData.access_token,
-                    refreshToken: tokenData.refresh_token ?? null, now
+        if (user) {
+            // Update user and upsert social account
+            user = await prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    lastSignInAt: new Date(),
+                    socialAccounts: {
+                        upsert: {
+                            where: {
+                                provider_providerUserId: {
+                                    provider: oauthProvider,
+                                    providerUserId
+                                }
+                            },
+                            create: {
+                                provider: oauthProvider,
+                                providerUserId,
+                                accessToken: tokenData.access_token,
+                                refreshToken: tokenData.refresh_token ?? null,
+                            },
+                            update: {
+                                accessToken: tokenData.access_token,
+                                refreshToken: tokenData.refresh_token ?? null,
+                                updatedAt: new Date()
+                            }
+                        }
+                    }
                 }
-            )
+            })
         } else {
             // Create new user with social account
-            userId = uuidv4()
-            await runQuery(
-                `MATCH (t:Tenant {id: $tenantId})
-                 CREATE (u:User {
-                     id: $userId,
-                     email: $email,
-                     firstName: $firstName,
-                     lastName: $lastName,
-                     displayName: $displayName,
-                     avatarUrl: $avatarUrl,
-                     emailVerified: true,
-                     banned: false,
-                     locked: false,
-                     createdAt: $now,
-                     updatedAt: $now
-                 })-[:BELONGS_TO]->(t)
-                 CREATE (u)-[:HAS_SOCIAL]->(sa:SocialAccount {
-                     id: $saId,
-                     provider: $provider,
-                     providerUserId: $providerUserId,
-                     accessToken: $accessToken,
-                     refreshToken: $refreshToken,
-                     createdAt: $now
-                 })`,
-                {
-                    tenantId, userId, email,
-                    firstName: firstName || null, lastName: lastName || null,
+            user = await prisma.user.create({
+                data: {
+                    email,
+                    firstName: firstName || null,
+                    lastName: lastName || null,
                     displayName: firstName || email.split('@')[0],
-                    avatarUrl, now, saId: uuidv4(),
-                    provider: provider.toUpperCase(),
-                    providerUserId, accessToken: tokenData.access_token,
-                    refreshToken: tokenData.refresh_token ?? null,
+                    avatarUrl,
+                    emailVerified: true,
+                    accountId,
+                    lastSignInAt: new Date(),
+                    socialAccounts: {
+                        create: {
+                            provider: oauthProvider,
+                            providerUserId,
+                            accessToken: tokenData.access_token,
+                            refreshToken: tokenData.refresh_token ?? null,
+                        }
+                    }
                 }
-            )
+            })
         }
-
-        // Update last sign in
-        await runQuery(
-            `MATCH (u:User {id: $userId}) SET u.lastSignInAt = $now`,
-            { userId, now }
-        )
 
         const ip = req.headers.get('x-forwarded-for') ?? undefined
         const ua = req.headers.get('user-agent') ?? undefined
-        const { accessToken, refreshToken } = await createSession(userId, tenantId, email, ip, ua)
+        const sessionResult = await createSession(user.id, accountId, email, ip, ua)
 
         // Audit log
-        await runQuery(
-            `MATCH (u:User {id: $userId})
-             CREATE (a:AuditLog {
-                 id: $id, action: $action, result: 'SUCCESS',
-                 ipAddress: $ip, tenantId: $tenantId, createdAt: $now
-             })<-[:HAS_AUDIT_LOG]-(u)`,
-            { id: uuidv4(), userId, action: `user.signed_in.${provider}`, ip: ip ?? null, tenantId, now }
-        )
+        await prisma.auditLog.create({
+            data: {
+                action: `user.signed_in.${provider}`,
+                result: 'SUCCESS',
+                ipAddress: ip,
+                accountId: accountId,
+                userId: user.id
+            }
+        })
 
         const response = NextResponse.redirect(new URL('/dashboard?oauth=success', process.env.NEXT_PUBLIC_APP_URL!))
-        response.cookies.set('kip_token', accessToken, {
+        response.cookies.set('kaappu_token', sessionResult.accessToken, {
             httpOnly: false,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
             maxAge: 60 * 15,
             path: '/',
         })
-        response.cookies.set('kip_refresh_token', refreshToken, {
+        response.cookies.set('kaappu_refresh_token', sessionResult.refreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',

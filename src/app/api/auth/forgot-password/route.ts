@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { runQuery } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { sendPasswordResetEmail } from '@/lib/email'
 import { rateLimit } from '@/lib/rate-limit'
 import { v4 as uuidv4 } from 'uuid'
@@ -21,52 +21,45 @@ export async function POST(req: NextRequest) {
         const { email } = schema.parse(body)
 
         // Look up user — don't reveal existence
-        const userResult = await runQuery(
-            `MATCH (u:User {email: $email})
-             WHERE u.banned = false OR u.banned IS NULL
-             RETURN u LIMIT 1`,
-            { email: email.toLowerCase() }
-        )
+        const user = await prisma.user.findFirst({
+            where: {
+                email: email.toLowerCase(),
+                banned: false
+            }
+        })
 
-        if (userResult.records.length > 0) {
-            const user = userResult.records[0].get('u').properties
+        if (user) {
             const token = uuidv4()
-            const now = new Date().toISOString()
-            const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+            const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
 
-            await runQuery(
-                `MATCH (u:User {id: $userId})
-                 CREATE (v:VerificationToken {
-                     id: $id,
-                     email: $email,
-                     token: $token,
-                     type: 'PASSWORD_RESET',
-                     expiresAt: $expiresAt,
-                     createdAt: $now,
-                     usedAt: null
-                 })<-[:HAS_TOKEN]-(u)`,
-                { id: uuidv4(), userId: user.id, email, token, expiresAt, now }
-            )
+            await prisma.verificationToken.create({
+                data: {
+                    userId: user.id,
+                    email: user.email,
+                    token,
+                    type: 'PASSWORD_RESET',
+                    expiresAt,
+                }
+            })
 
-            sendPasswordResetEmail(email, token, user.firstName ?? undefined).catch(console.error)
+            sendPasswordResetEmail(user.email, token, user.firstName ?? undefined).catch(console.error)
 
-            await runQuery(
-                `MATCH (u:User {id: $userId})
-                 CREATE (a:AuditLog {
-                     id: $logId,
-                     action: 'user.password_reset_requested',
-                     result: 'SUCCESS',
-                     ipAddress: $ip,
-                     tenantId: $tenantId,
-                     createdAt: $now
-                 })<-[:HAS_AUDIT_LOG]-(u)`,
-                { logId: uuidv4(), userId: user.id, ip, tenantId: user.tenantId ?? 'default', now: new Date().toISOString() }
-            )
+            // Audit log
+            await prisma.auditLog.create({
+                data: {
+                    action: 'user.password_reset_requested',
+                    result: 'SUCCESS',
+                    ipAddress: ip,
+                    accountId: user.accountId,
+                    userId: user.id
+                }
+            })
         }
 
         // Always return success to prevent email enumeration
         return NextResponse.json({ success: true })
-    } catch {
+    } catch (error) {
+        console.error('[Forgot Password API Error]:', error)
         return NextResponse.json({ success: true })
     }
 }

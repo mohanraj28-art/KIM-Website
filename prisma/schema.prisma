@@ -11,9 +11,9 @@ datasource db {
 }
 
 // ============================================================
-// TENANTS (Top-level isolation unit)
+// ACCOUNTS (Top-level isolation unit, formerly Tenants)
 // ============================================================
-model Tenant {
+model Account {
   id                 String    @id @default(cuid())
   name               String
   slug               String    @unique
@@ -29,7 +29,7 @@ model Tenant {
   subscriptionStatus SubscriptionStatus @default(INACTIVE)
   billingEmail       String?
   maxUsers           Int       @default(10)
-  maxOrganizations   Int       @default(3)
+  maxTenants         Int       @default(3)
   mfaRequired        Boolean   @default(false)
   allowedDomains     String[]
   blockedDomains     String[]
@@ -39,7 +39,7 @@ model Tenant {
   deletedAt          DateTime?
 
   users          User[]
-  organizations  Organization[]
+  tenants        Tenant[]
   roles          Role[]
   auditLogs      AuditLog[]
   sessions       Session[]
@@ -48,7 +48,7 @@ model Tenant {
   emailTemplates EmailTemplate[]
   invitations    Invitation[]
 
-  @@map("tenants")
+  @@map("accounts")
 }
 
 // ============================================================
@@ -56,7 +56,7 @@ model Tenant {
 // ============================================================
 model User {
   id                  String    @id @default(cuid())
-  tenantId            String
+  accountId           String
   email               String
   emailVerified       Boolean   @default(false)
   emailVerifiedAt     DateTime?
@@ -87,21 +87,21 @@ model User {
   updatedAt           DateTime  @updatedAt
   deletedAt           DateTime?
 
-  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account             Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   passwords           Password[]
   sessions            Session[]
   socialAccounts      SocialAccount[]
   mfaSettings         MfaSetting[]
-  organizationMembers OrganizationMember[]
+  tenantMembers       TenantMember[]
   auditLogs           AuditLog[]
   passkeys            Passkey[]
   notifications       Notification[]
   devices             Device[]
   sentInvitations     Invitation[] @relation("InvitationSender")
 
-  @@unique([tenantId, email])
-  @@unique([tenantId, username])
-  @@index([tenantId])
+  @@unique([accountId, email])
+  @@unique([accountId, username])
+  @@index([accountId])
   @@index([email])
   @@map("users")
 }
@@ -128,7 +128,7 @@ model Password {
 // ============================================================
 model Session {
   id           String    @id @default(cuid())
-  tenantId     String
+  accountId    String
   userId       String
   token        String    @unique
   refreshToken String?   @unique
@@ -147,11 +147,11 @@ model Session {
   revokedAt    DateTime?
   revokedBy    String?
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([tenantId])
+  @@index([accountId])
   @@index([token])
   @@map("sessions")
 }
@@ -245,11 +245,11 @@ model VerificationToken {
 }
 
 // ============================================================
-// ORGANIZATIONS
+// TENANTS (Formerly Organizations)
 // ============================================================
-model Organization {
+model Tenant {
   id               String    @id @default(cuid())
-  tenantId         String
+  accountId        String
   name             String
   slug             String
   description      String?
@@ -265,33 +265,33 @@ model Organization {
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
 
-  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  members     OrganizationMember[]
+  account     Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  members     TenantMember[]
   invitations Invitation[]
   roles       Role[]
 
-  @@unique([tenantId, slug])
-  @@index([tenantId])
-  @@map("organizations")
+  @@unique([accountId, slug])
+  @@index([accountId])
+  @@map("tenants")
 }
 
 // ============================================================
-// ORGANIZATION MEMBERS
+// TENANT MEMBERS
 // ============================================================
-model OrganizationMember {
+model TenantMember {
   id             String    @id @default(cuid())
-  organizationId String
+  tenantId       String
   userId         String
   roleId         String?
   joinedAt       DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role         Role?        @relation(fields: [roleId], references: [id])
+  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role?  @relation(fields: [roleId], references: [id])
 
-  @@unique([organizationId, userId])
-  @@map("organization_members")
+  @@unique([tenantId, userId])
+  @@map("tenant_members")
 }
 
 // ============================================================
@@ -299,8 +299,8 @@ model OrganizationMember {
 // ============================================================
 model Invitation {
   id             String           @id @default(cuid())
-  tenantId       String
-  organizationId String?
+  accountId      String
+  tenantId       String?
   email          String
   roleId         String?
   senderId       String?
@@ -311,8 +311,8 @@ model Invitation {
   revokedAt      DateTime?
   createdAt      DateTime         @default(now())
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  organization Organization? @relation(fields: [organizationId], references: [id])
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id])
   sender       User?         @relation("InvitationSender", fields: [senderId], references: [id])
 
   @@map("invitations")
@@ -323,8 +323,8 @@ model Invitation {
 // ============================================================
 model Role {
   id             String    @id @default(cuid())
-  tenantId       String
-  organizationId String?
+  accountId      String
+  tenantId       String?
   name           String
   key            String
   description    String?
@@ -332,12 +332,12 @@ model Role {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  organization    Organization?        @relation(fields: [organizationId], references: [id])
+  account         Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tenant          Tenant?              @relation(fields: [tenantId], references: [id])
   permissions     RolePermission[]
-  members         OrganizationMember[]
+  members         TenantMember[]
 
-  @@unique([tenantId, key])
+  @@unique([accountId, key])
   @@map("roles")
 }
 
@@ -370,7 +370,7 @@ model RolePermission {
 // ============================================================
 model AuditLog {
   id          String   @id @default(cuid())
-  tenantId    String
+  accountId    String
   userId      String?
   actorId     String?
   action      String
@@ -384,10 +384,10 @@ model AuditLog {
   result      AuditResult @default(SUCCESS)
   createdAt   DateTime @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User?  @relation(fields: [userId], references: [id])
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User?  @relation(fields: [userId], references: [id])
 
-  @@index([tenantId])
+  @@index([accountId])
   @@index([userId])
   @@index([createdAt])
   @@map("audit_logs")
@@ -418,17 +418,17 @@ model Device {
 // ============================================================
 model ApiKey {
   id          String    @id @default(cuid())
-  tenantId    String
-  name        String
-  keyPrefix   String
-  keyHash     String
-  scopes      String[]
-  lastUsedAt  DateTime?
-  expiresAt   DateTime?
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
+  accountId    String
+  name         String
+  keyPrefix    String
+  keyHash      String
+  scopes       String[]
+  lastUsedAt   DateTime?
+  expiresAt    DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@map("api_keys")
 }
@@ -438,7 +438,7 @@ model ApiKey {
 // ============================================================
 model Webhook {
   id          String   @id @default(cuid())
-  tenantId    String
+  accountId    String
   url         String
   secret      String
   events      String[]
@@ -448,7 +448,7 @@ model Webhook {
   updatedAt   DateTime @updatedAt
 
   deliveries WebhookDelivery[]
-  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account     Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@map("webhooks")
 }
@@ -475,14 +475,14 @@ model WebhookDelivery {
 // ============================================================
 model EmailTemplate {
   id        String   @id @default(cuid())
-  tenantId  String
-  type      String   @unique
-  subject   String
-  body      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  accountId  String
+  type       String   @unique
+  subject    String
+  body       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@map("email_templates")
 }

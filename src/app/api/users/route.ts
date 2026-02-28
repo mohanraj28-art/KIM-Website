@@ -1,75 +1,78 @@
 import { NextRequest } from 'next/server'
-import { withAuth, successResponse } from '@/lib/api-helpers'
-import { runQuery, toNum, int } from '@/lib/db'
+import { withAuth, successResponse, errorResponse } from '@/lib/api-helpers'
+import { prisma } from '@/lib/db'
+import { z } from 'zod'
+import { hashPassword } from '@/lib/auth/auth'
 
-// GET /api/users - list users for the tenant
+const createUserSchema = z.object({
+    email: z.string().email(),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    password: z.string().min(8).optional(),
+})
+
+// GET /api/users - list users for the account
 export const GET = withAuth(async (req: NextRequest, ctx) => {
     const { searchParams } = req.nextUrl
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '20')
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1)
+    const limit = Math.max(1, Math.min(parseInt(searchParams.get('limit') || '20') || 20, 100))
     const search = searchParams.get('search') || ''
     const skip = (page - 1) * limit
 
-    const searchClause = search
-        ? `AND (toLower(u.email) CONTAINS toLower($search)
-               OR toLower(u.firstName) CONTAINS toLower($search)
-               OR toLower(u.lastName) CONTAINS toLower($search))`
-        : ''
+    const where: any = {
+        accountId: ctx.accountId,
+        deletedAt: null,
+    }
 
-    const [usersResult, countResult] = await Promise.all([
-        runQuery(
-            `MATCH (u:User)-[:BELONGS_TO]->(:Tenant {id: $tenantId})
-             WHERE u.deletedAt IS NULL ${searchClause}
-             OPTIONAL MATCH (u)-[:HAS_MFA]->(m:MfaSetting {verified: true})
-             OPTIONAL MATCH (u)-[:HAS_SESSION]->(s:Session {active: true})
-             OPTIONAL MATCH (u)-[:IS_MEMBER]->(org:Organization)
-             WITH u,
-                  collect(DISTINCT m.type) AS mfaTypes,
-                  count(DISTINCT s) AS sessionCount,
-                  count(DISTINCT org) AS orgCount
-             RETURN u, mfaTypes, sessionCount, orgCount
-             ORDER BY u.createdAt DESC
-             SKIP $skip LIMIT $limit`,
-            {
-                tenantId: ctx.tenantId,
-                search,
-                skip: int(skip),
-                limit: int(limit)
-            }
-        ),
-        runQuery(
-            `MATCH (u:User)-[:BELONGS_TO]->(:Tenant {id: $tenantId})
-             WHERE u.deletedAt IS NULL ${searchClause}
-             RETURN count(u) AS total`,
-            { tenantId: ctx.tenantId, search }
-        ),
+    if (search) {
+        where.OR = [
+            { email: { contains: search, mode: 'insensitive' } },
+            { firstName: { contains: search, mode: 'insensitive' } },
+            { lastName: { contains: search, mode: 'insensitive' } },
+        ]
+    }
+
+    const [users, total] = await Promise.all([
+        prisma.user.findMany({
+            where,
+            include: {
+                mfaSettings: {
+                    where: { verified: true },
+                    select: { type: true }
+                },
+                _count: {
+                    select: {
+                        sessions: { where: { active: true } },
+                        tenantMembers: true
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: limit,
+        }),
+        prisma.user.count({ where }),
     ])
 
-    const total = toNum(countResult.records[0]?.get('total'))
-
-    const users = usersResult.records.map(r => {
-        const u = r.get('u').properties
-        const mfaTypes = r.get('mfaTypes') as string[]
-        return {
-            id: u.id,
-            email: u.email,
-            firstName: u.firstName ?? null,
-            lastName: u.lastName ?? null,
-            displayName: u.displayName ?? null,
-            avatarUrl: u.avatarUrl ?? null,
-            emailVerified: u.emailVerified ?? false,
-            phone: u.phone ?? null,
-            banned: u.banned ?? false,
-            lastSignInAt: u.lastSignInAt ?? null,
-            createdAt: u.createdAt,
-            mfaEnabled: mfaTypes.length > 0,
-            sessionCount: toNum(r.get('sessionCount')),
-            orgCount: toNum(r.get('orgCount')),
-        }
-    })
+    const formattedUsers = users.map(u => ({
+        id: u.id,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        displayName: u.displayName,
+        avatarUrl: u.avatarUrl,
+        emailVerified: u.emailVerified,
+        phone: u.phone,
+        banned: u.banned,
+        lastSignInAt: u.lastSignInAt,
+        createdAt: u.createdAt,
+        mfaEnabled: u.mfaSettings.length > 0,
+        sessionCount: u._count.sessions,
+        tenantCount: u._count.tenantMembers,
+    }))
 
     return successResponse({
-        users,
+        users: formattedUsers,
         pagination: {
             page,
             limit,
@@ -77,4 +80,59 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
             totalPages: Math.ceil(total / limit),
         },
     })
+})
+
+// POST /api/users - create a new user
+export const POST = withAuth(async (req: NextRequest, ctx) => {
+    try {
+        const body = await req.json()
+        const data = createUserSchema.parse(body)
+
+        // Check if user already exists in this account
+        const existing = await prisma.user.findFirst({
+            where: {
+                email: data.email,
+                accountId: ctx.accountId,
+                deletedAt: null
+            }
+        })
+
+        if (existing) {
+            return errorResponse('User with this email already exists in your account', 409)
+        }
+
+        const newUser = await prisma.user.create({
+            data: {
+                email: data.email,
+                firstName: data.firstName,
+                lastName: data.lastName,
+                displayName: data.firstName && data.lastName ? `${data.firstName} ${data.lastName}` : data.email.split('@')[0],
+                accountId: ctx.accountId,
+                emailVerified: true,
+                passwords: data.password ? {
+                    create: {
+                        hash: await hashPassword(data.password),
+                        strength: 3
+                    }
+                } : undefined
+            }
+        })
+
+        // Audit log
+        await prisma.auditLog.create({
+            data: {
+                action: 'user.created',
+                result: 'SUCCESS',
+                resourceId: newUser.id,
+                accountId: ctx.accountId,
+                userId: ctx.userId,
+                metadata: { createdEmail: data.email }
+            }
+        })
+
+        return successResponse(newUser, 201)
+    } catch (error: any) {
+        const message = error instanceof z.ZodError ? error.issues[0].message : error.message
+        return errorResponse(message || 'Failed to create user')
+    }
 })

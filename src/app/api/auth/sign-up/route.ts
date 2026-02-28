@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { signUpWithPassword } from '@/lib/auth/auth'
 import { sendVerificationEmail } from '@/lib/email'
-import { generateOTP, isDisposableEmail } from '@/lib/utils'
-import { runQuery } from '@/lib/db'
+import { generateOTP } from '@/lib/utils'
+import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/rate-limit'
 import { z } from 'zod'
-import { v4 as uuidv4 } from 'uuid'
 
 const signUpSchema = z.object({
     email: z.string().email('Invalid email address'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     firstName: z.string().max(50).optional(),
     lastName: z.string().max(50).optional(),
-    tenantId: z.string(),
+    accountId: z.string(), // formerly tenantId
 })
 
 export async function POST(req: NextRequest) {
@@ -32,48 +31,42 @@ export async function POST(req: NextRequest) {
             }, { status: 400 })
         }
 
-        const { email, password, firstName, lastName, tenantId } = parsed.data
+        const { email, password, firstName, lastName, accountId } = parsed.data
 
-        // Ensure tenant node exists in Neo4j
-        await runQuery(
-            `MERGE (t:Tenant {id: $tenantId})
-             ON CREATE SET t.name = 'Default', t.slug = $tenantId, t.createdAt = $now`,
-            { tenantId, now: new Date().toISOString() }
-        )
+        // Ensure account exists
+        await prisma.account.upsert({
+            where: { id: accountId },
+            create: {
+                id: accountId,
+                name: 'Default',
+                slug: accountId,
+            },
+            update: {}
+        })
 
         const userAgent = req.headers.get('user-agent') ?? undefined
         const result = await signUpWithPassword(
-            { email, password, firstName, lastName, tenantId },
+            { email, password, firstName, lastName, accountId },
             ip,
             userAgent
         )
 
-        // Create verification token node
+        // Create verification token
         const verifyToken = generateOTP(32)
-        await runQuery(
-            `MATCH (u:User {id: $userId})
-             CREATE (v:VerificationToken {
-                 id: $id,
-                 email: $email,
-                 token: $token,
-                 type: 'EMAIL_VERIFICATION',
-                 expiresAt: $expiresAt,
-                 createdAt: $now
-             })<-[:HAS_TOKEN]-(u)`,
-            {
-                id: uuidv4(),
+        await prisma.verificationToken.create({
+            data: {
                 userId: result.user.id,
                 email,
                 token: verifyToken,
-                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                now: new Date().toISOString(),
+                type: 'EMAIL_VERIFICATION',
+                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
             }
-        )
+        })
 
         sendVerificationEmail(email, verifyToken, firstName).catch(console.error)
 
         const response = NextResponse.json({ success: true, data: result }, { status: 201 })
-        response.cookies.set('kip_token', result.accessToken, {
+        response.cookies.set('kaappu_token', result.accessToken, {
             httpOnly: true,
             secure: false, // Force false for localhost stability
             sameSite: 'lax',

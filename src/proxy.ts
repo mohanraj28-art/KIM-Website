@@ -26,8 +26,8 @@ export default async function proxy(req: NextRequest) {
     const user = await getUserFromRequest(req)
     console.log(`[Proxy] ${pathname} - User: ${user ? 'Authenticated' : 'Logged out'}`);
     if (!user) {
-        const hasToken = req.cookies.has('kip_token')
-        console.log(`[Proxy] Cookie 'kip_token' found: ${hasToken}`);
+        const hasToken = req.cookies.has('kaappu_token')
+        console.log(`[Proxy] Cookie 'kaappu_token' found: ${hasToken}`);
     }
 
     // Redirect logged-in users away from auth pages
@@ -36,7 +36,8 @@ export default async function proxy(req: NextRequest) {
     }
 
     // Protect dashboard routes
-    if (pathname.startsWith('/dashboard') || pathname.startsWith('/api/users') || pathname.startsWith('/api/organizations')) {
+    // Note: We protect /api/tenants now instead of /api/organizations
+    if (pathname.startsWith('/dashboard') || pathname.startsWith('/api/users') || pathname.startsWith('/api/tenants')) {
         if (!user) {
             if (pathname.startsWith('/api/')) {
                 return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

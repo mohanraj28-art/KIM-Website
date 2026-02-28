@@ -15,7 +15,7 @@ export interface User {
     lastSignInAt: string | null
 }
 
-export interface Organization {
+export interface Tenant {
     id: string
     name: string
     slug: string
@@ -25,14 +25,14 @@ export interface Organization {
 
 interface AuthContextType {
     user: User | null
-    organization: Organization | null
+    tenant: Tenant | null // formerly organization
     isLoaded: boolean
     isSignedIn: boolean
     accessToken: string | null
     signIn: (email: string, password: string) => Promise<void>
     signUp: (data: SignUpData) => Promise<void>
     signOut: () => Promise<void>
-    switchOrganization: (orgId: string) => void
+    switchTenant: (tenantId: string) => void
     refreshUser: () => Promise<void>
 }
 
@@ -45,16 +45,16 @@ interface SignUpData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-const DEFAULT_TENANT_ID = 'default' // In production, resolve from domain
+const DEFAULT_ACCOUNT_ID = 'default' // In production, resolve from domain
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null)
-    const [organization, setOrganization] = useState<Organization | null>(null)
+    const [tenant, setTenant] = useState<Tenant | null>(null)
     const [accessToken, setAccessToken] = useState<string | null>(null)
     const [isLoaded, setIsLoaded] = useState(false)
 
     const refreshUser = useCallback(async () => {
-        const token = localStorage.getItem('kip_token')
+        const token = localStorage.getItem('kaappu_token')
         if (!token) {
             setIsLoaded(true)
             return
@@ -68,12 +68,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 const data = await res.json()
                 setUser(data.data.user)
                 setAccessToken(token)
-                if (data.data.organization) {
-                    setOrganization(data.data.organization)
+                if (data.data.tenant) {
+                    setTenant(data.data.tenant)
                 }
             } else {
-                localStorage.removeItem('kip_token')
-                localStorage.removeItem('kip_refresh_token')
+                localStorage.removeItem('kaappu_token')
+                localStorage.removeItem('kaappu_refresh_token')
             }
         } catch {
             // Silently fail
@@ -90,13 +90,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch('/api/auth/sign-in', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, tenantId: DEFAULT_TENANT_ID }),
+            body: JSON.stringify({ email, password, accountId: DEFAULT_ACCOUNT_ID }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error)
 
-        localStorage.setItem('kip_token', data.data.accessToken)
-        localStorage.setItem('kip_refresh_token', data.data.refreshToken)
+        localStorage.setItem('kaappu_token', data.data.accessToken)
+        localStorage.setItem('kaappu_refresh_token', data.data.refreshToken)
         setUser(data.data.user)
         setAccessToken(data.data.accessToken)
     }
@@ -105,53 +105,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch('/api/auth/sign-up', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...formData, tenantId: DEFAULT_TENANT_ID }),
+            body: JSON.stringify({ ...formData, accountId: DEFAULT_ACCOUNT_ID }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error)
 
-        localStorage.setItem('kip_token', data.data.accessToken)
-        localStorage.setItem('kip_refresh_token', data.data.refreshToken)
+        localStorage.setItem('kaappu_token', data.data.accessToken)
+        localStorage.setItem('kaappu_refresh_token', data.data.refreshToken)
         setUser(data.data.user)
         setAccessToken(data.data.accessToken)
     }
 
     const signOut = async () => {
-        const token = localStorage.getItem('kip_token')
+        const token = localStorage.getItem('kaappu_token')
         if (token) {
             await fetch('/api/auth/sign-out', {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
             }).catch(() => { })
         }
-        localStorage.removeItem('kip_token')
-        localStorage.removeItem('kip_refresh_token')
+        localStorage.removeItem('kaappu_token')
+        localStorage.removeItem('kaappu_refresh_token')
         setUser(null)
         setAccessToken(null)
-        setOrganization(null)
+        setTenant(null)
     }
 
-    const switchOrganization = (orgId: string) => {
-        // Fetch org info and set
-        fetch(`/api/organizations/${orgId}`, {
+    const switchTenant = (tenantId: string) => {
+        // Fetch tenant info and set
+        fetch(`/api/tenants/${tenantId}`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         })
             .then(r => r.json())
-            .then(data => setOrganization(data.data))
+            .then(data => setTenant(data.data))
             .catch(() => { })
     }
 
     return (
         <AuthContext.Provider value={{
             user,
-            organization,
+            tenant,
             isLoaded,
             isSignedIn: !!user,
             accessToken,
             signIn,
             signUp,
             signOut,
-            switchOrganization,
+            switchTenant,
             refreshUser,
         }}>
             {children}

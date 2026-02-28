@@ -4,22 +4,22 @@ import { AuthProvider } from '@/contexts/AuthContext'
 
 export const metadata: Metadata = {
   title: {
-    default: 'KIP Platform — Identity & Authentication',
-    template: '%s | KIP Platform',
+    default: 'Kaappu Identity — Unified Auth & Identity SaaS',
+    template: '%s | Kaappu Identity',
   },
   description:
-    'Production-ready Identity Management & Authentication Platform. Multi-tenant, SSO, MFA, passkeys, and more.',
-  keywords: ['authentication', 'identity management', 'SSO', 'MFA', 'OAuth', 'multi-tenant'],
-  authors: [{ name: 'KIP Platform' }],
+    'Production-ready Identity Management & Authentication Platform for modern SaaS. Social SSO, MFA, Passkeys, and Multi-tenancy.',
+  keywords: ['authentication', 'identity management', 'SSO', 'MFA', 'OAuth', 'multi-tenant', 'kaappu'],
+  authors: [{ name: 'Kaappu' }],
   openGraph: {
     type: 'website',
-    title: 'KIP Platform — Identity & Authentication',
+    title: 'Kaappu Identity — Modern Auth for SaaS',
     description: 'Production-ready Identity Management & Authentication for modern SaaS.',
-    siteName: 'KIP Platform',
+    siteName: 'Kaappu Identity',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'KIP Platform',
+    title: 'Kaappu Identity',
     description: 'Production-ready Identity Management & Authentication',
   },
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),

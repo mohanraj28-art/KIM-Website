@@ -10,10 +10,10 @@ export const PLANS = {
         price: 0,
         priceId: null,
         maxUsers: 10,
-        maxOrganizations: 1,
+        maxTenants: 1,
         features: [
             'Up to 10 users',
-            '1 organization',
+            '1 tenant',
             'Email/password auth',
             'Social login (3 providers)',
             'Basic audit logs',
@@ -25,10 +25,10 @@ export const PLANS = {
         price: 25,
         priceId: process.env.STRIPE_PRICE_STARTER,
         maxUsers: 100,
-        maxOrganizations: 5,
+        maxTenants: 5,
         features: [
             'Up to 100 users',
-            '5 organizations',
+            '5 tenants',
             'All auth methods',
             'All social providers',
             'MFA support',
@@ -42,10 +42,10 @@ export const PLANS = {
         price: 99,
         priceId: process.env.STRIPE_PRICE_PRO,
         maxUsers: 1000,
-        maxOrganizations: 25,
+        maxTenants: 25,
         features: [
             'Up to 1,000 users',
-            '25 organizations',
+            '25 tenants',
             'Passkeys / WebAuthn',
             'Custom domains',
             'Webhooks',
@@ -59,10 +59,10 @@ export const PLANS = {
         price: null, // Custom
         priceId: process.env.STRIPE_PRICE_ENTERPRISE,
         maxUsers: -1, // Unlimited
-        maxOrganizations: -1,
+        maxTenants: -1,
         features: [
             'Unlimited users',
-            'Unlimited organizations',
+            'Unlimited tenants',
             'SAML SSO',
             'Custom SLA',
             'Dedicated infrastructure',
@@ -73,11 +73,11 @@ export const PLANS = {
     },
 }
 
-export async function createStripeCustomer(email: string, name: string, tenantId: string) {
+export async function createStripeCustomer(email: string, name: string, accountId: string) {
     return stripe.customers.create({
         email,
         name,
-        metadata: { tenantId },
+        metadata: { accountId },
     })
 }
 
@@ -86,14 +86,14 @@ export async function createCheckoutSession({
     priceId,
     successUrl,
     cancelUrl,
-    tenantId,
+    accountId,
     trialDays,
 }: {
     customerId: string
     priceId: string
     successUrl: string
     cancelUrl: string
-    tenantId: string
+    accountId: string
     trialDays?: number
 }) {
     return stripe.checkout.sessions.create({
@@ -103,10 +103,10 @@ export async function createCheckoutSession({
         mode: 'subscription',
         success_url: successUrl,
         cancel_url: cancelUrl,
-        metadata: { tenantId },
+        metadata: { accountId },
         subscription_data: {
             trial_period_days: trialDays,
-            metadata: { tenantId },
+            metadata: { accountId },
         },
     })
 }

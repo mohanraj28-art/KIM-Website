@@ -35,6 +35,22 @@ const OAUTH_CONFIGS: Record<string, {
         clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
         scope: 'openid email profile User.Read',
     },
+    linkedin: {
+        authUrl: 'https://www.linkedin.com/oauth/v2/authorization',
+        tokenUrl: 'https://www.linkedin.com/oauth/v2/accessToken',
+        userUrl: 'https://api.linkedin.com/v2/userinfo',
+        clientId: process.env.LINKEDIN_CLIENT_ID,
+        clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+        scope: 'openid email profile',
+    },
+    apple: {
+        authUrl: 'https://appleid.apple.com/auth/authorize',
+        tokenUrl: 'https://appleid.apple.com/auth/token',
+        userUrl: '', // Apple uses id_token instead of a userUrl
+        clientId: process.env.APPLE_CLIENT_ID,
+        clientSecret: process.env.APPLE_CLIENT_SECRET,
+        scope: 'name email',
+    },
     discord: {
         authUrl: 'https://discord.com/api/oauth2/authorize',
         tokenUrl: 'https://discord.com/api/oauth2/token',

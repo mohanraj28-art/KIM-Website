@@ -18,7 +18,7 @@ const FEATURES = [
   {
     icon: Users,
     title: 'Multi-Tenant Architecture',
-    desc: 'Full tenant isolation with organizations, teams, groups, and granular RBAC permissions.',
+    desc: 'Full tenant isolation with projects, teams, groups, and granular RBAC permissions.',
     color: 'from-violet-500 to-purple-600',
   },
   {
@@ -45,6 +45,12 @@ const FEATURES = [
     desc: 'REST API, webhooks, SDKs, and React components you can drop into any application.',
     color: 'from-green-500 to-emerald-600',
   },
+  {
+    icon: Shield,
+    title: 'JIT Privileged Access',
+    desc: 'Just-in-time permissions with approval workflows for sensitive production access.',
+    color: 'from-red-500 to-orange-600',
+  },
 ]
 
 const PROVIDERS = [
@@ -66,7 +72,7 @@ const PLANS = [
     price: '$0',
     period: '/month',
     desc: 'Perfect for side projects and small teams',
-    features: ['10 users', '1 organization', 'Email/password auth', '3 social providers', 'Basic audit logs'],
+    features: ['10 users', '1 tenant', 'Email/password auth', '3 social providers', 'Basic audit logs'],
     cta: 'Start for free',
     popular: false,
   },
@@ -75,7 +81,7 @@ const PLANS = [
     price: '$25',
     period: '/month',
     desc: 'For growing startups needing more',
-    features: ['100 users', '5 organizations', 'All auth methods', 'All social providers', 'MFA & magic links', 'Advanced audit logs'],
+    features: ['100 users', '5 tenants', 'All auth methods', 'All social providers', 'MFA & magic links', 'Advanced audit logs'],
     cta: 'Start free trial',
     popular: false,
   },
@@ -84,7 +90,7 @@ const PLANS = [
     price: '$99',
     period: '/month',
     desc: 'For scaling companies and teams',
-    features: ['1,000 users', '25 organizations', 'Passkeys / WebAuthn', 'Custom domains', 'Webhooks & API keys', 'White-label branding', 'Priority support'],
+    features: ['1,000 users', '25 tenants', 'Passkeys / WebAuthn', 'Custom domains', 'Webhooks & API keys', 'White-label branding', 'Priority support'],
     cta: 'Start free trial',
     popular: true,
   },
@@ -93,7 +99,7 @@ const PLANS = [
     price: 'Custom',
     period: '',
     desc: 'For large organizations with custom needs',
-    features: ['Unlimited users', 'Unlimited orgs', 'SAML SSO', 'Custom SLA', 'Dedicated infra', 'SOC2 compliance', '24/7 support'],
+    features: ['Unlimited users', 'Unlimited tenants', 'SAML SSO', 'Custom SLA', 'Dedicated infra', 'SOC2 compliance', '24/7 support'],
     cta: 'Contact sales',
     popular: false,
   },
@@ -123,8 +129,8 @@ export default function HomePage() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 16, fontWeight: 800, color: 'white',
             }}>K</div>
-            <span style={{ fontFamily: 'Plus Jakarta Sans, sans-serif', fontWeight: 700, fontSize: 18, letterSpacing: '-0.02em' }}>
-              KIP Platform
+            <span style={{ fontFamily: 'Plus Jakarta Sans, sans-serif', fontWeight: 700, fontSize: 18, letterSpacing: '-0.01em', background: 'linear-gradient(135deg, #fff, #94a3b8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              Kaappu Identity
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -184,7 +190,7 @@ export default function HomePage() {
             fontSize: 'clamp(42px, 8vw, 80px)', letterSpacing: '-0.04em',
             lineHeight: 1.05, marginBottom: 24, color: '#f0f6fc',
           }}>
-            Identity & Auth{' '}
+            Unified Identity{' '}
             <span style={{
               background: 'linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
@@ -403,7 +409,7 @@ export default function HomePage() {
             Ready to get started?
           </h2>
           <p style={{ color: '#8b949e', fontSize: 18, marginBottom: 32, position: 'relative' }}>
-            Join thousands of developers building secure applications with KIP Platform.
+            Join thousands of developers building secure applications with Kaappu Identity.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', position: 'relative' }}>
             <Link href="/sign-up" style={{
@@ -439,9 +445,9 @@ export default function HomePage() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 12, fontWeight: 800, color: 'white',
             }}>K</div>
-            <span style={{ fontWeight: 600, color: '#8b949e' }}>KIP Platform</span>
+            <span style={{ fontWeight: 600, color: '#8b949e' }}>Kaappu Identity</span>
           </div>
-          <div>© 2025 KIP Platform. Built with ⚡ for modern SaaS.</div>
+          <div>© 2026 Kaappu Identity. Built with ⚡ for modern SaaS.</div>
           <div style={{ display: 'flex', gap: 20 }}>
             {['Privacy', 'Terms', 'Security', 'Status'].map(l => (
               <a key={l} href="#" style={{ color: '#484f58', textDecoration: 'none' }}>{l}</a>

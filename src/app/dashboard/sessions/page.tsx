@@ -1,50 +1,107 @@
 'use client'
 
-import { useState } from 'react'
-import { Activity, Search, Monitor, Smartphone, Globe, LogOut, Shield, MapPin } from 'lucide-react'
-import { formatDateTime, formatRelativeTime, parseUserAgent } from '@/lib/utils'
+import { useEffect, useState, useCallback } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
+import { Activity, Search, Monitor, Smartphone, Globe, LogOut, Shield, MapPin, Loader2, RefreshCw, XCircle, CheckCircle, Clock, Layout } from 'lucide-react'
+import { formatDateTime, formatRelativeTime, parseUserAgent, getInitials } from '@/lib/utils'
 
-const MOCK_SESSIONS = Array.from({ length: 15 }, (_, i) => ({
-    id: `session-${i + 1}`,
-    userId: `user-${(i % 5) + 1}`,
-    userEmail: [`john@acme.com`, `alice@startup.io`, `bob@corp.com`, `admin@example.com`, `dev@saas.io`][i % 5],
-    userAgent: [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Safari/537.36',
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) AppleWebKit/605.1.15 Mobile Safari',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Firefox/121.0',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/120.0',
-    ][i % 5],
-    ipAddress: [`192.168.${i}.${i * 3 + 1}`, `10.0.${i}.1`, `172.16.${i}.10`][i % 3],
-    country: ['US', 'UK', 'CA', 'AU', 'DE', 'FR', 'IN'][i % 7],
-    city: ['New York', 'London', 'Toronto', 'Sydney', 'Berlin', 'Paris', 'Mumbai'][i % 7],
-    active: Math.random() > 0.2,
-    lastActiveAt: new Date(Date.now() - Math.random() * 3600 * 1000).toISOString(),
-    createdAt: new Date(Date.now() - Math.random() * 7 * 24 * 3600 * 1000).toISOString(),
-    expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
-}))
+interface Session {
+    id: string
+    userId: string
+    user: { email: string; firstName: string | null; lastName: string | null; avatarUrl: string | null }
+    ipAddress: string | null
+    userAgent: string | null
+    active: boolean
+    lastActiveAt: string
+    createdAt: string
+    expiresAt: string
+    country: string | null
+    city: string | null
+    isCurrent: boolean
+}
 
-function DeviceIcon({ ua }: { ua: string }) {
+interface Pagination { page: number; limit: number; total: number; totalPages: number }
+
+function DeviceIcon({ ua }: { ua: string | null }) {
+    if (!ua) return <Monitor size={14} />
     const { device } = parseUserAgent(ua)
     return device === 'Mobile' ? <Smartphone size={14} /> : <Monitor size={14} />
 }
 
-function FlagEmoji({ country }: { country: string }) {
+function FlagEmoji({ country }: { country: string | null }) {
     const flags: Record<string, string> = { US: '🇺🇸', UK: '🇬🇧', CA: '🇨🇦', AU: '🇦🇺', DE: '🇩🇪', FR: '🇫🇷', IN: '🇮🇳' }
-    return <span>{flags[country] || '🌐'}</span>
+    return <span>{country && flags[country] ? flags[country] : '🌐'}</span>
 }
 
 export default function SessionsPage() {
+    const { accessToken } = useAuth()
+    const [sessions, setSessions] = useState<Session[]>([])
+    const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, totalPages: 1 })
+    const [loading, setLoading] = useState(true)
+    const [revoking, setRevoking] = useState<string | null>(null)
     const [search, setSearch] = useState('')
-    const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all')
+    const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('active')
 
-    const filtered = MOCK_SESSIONS.filter(s => {
-        const matchesSearch = s.userEmail.toLowerCase().includes(search.toLowerCase()) || s.ipAddress.includes(search)
-        const matchesFilter = filter === 'all' || (filter === 'active' && s.active) || (filter === 'inactive' && !s.active)
-        return matchesSearch && matchesFilter
-    })
+    const fetchSessions = useCallback(async () => {
+        if (!accessToken) return
+        setLoading(true)
+        try {
+            const params = new URLSearchParams({
+                all: 'true',
+                active: filter === 'active' ? 'true' : filter === 'inactive' ? 'false' : 'all',
+                page: String(pagination.page),
+                limit: '20'
+            })
+            const res = await fetch(`/api/sessions?${params}`, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            })
+            const data = await res.json()
+            if (data.success) {
+                setSessions(data.data.sessions)
+                setPagination(data.data.pagination)
+            }
+        } catch (err) {
+            console.error(err)
+        } finally {
+            setLoading(false)
+        }
+    }, [accessToken, filter, pagination.page])
 
-    const activeCount = MOCK_SESSIONS.filter(s => s.active).length
+    useEffect(() => { fetchSessions() }, [fetchSessions])
+
+    const handleRevoke = async (id: string) => {
+        if (!confirm('Are you sure you want to revoke this session? The user will be logged out immediately.')) return
+        setRevoking(id)
+        try {
+            const res = await fetch(`/api/sessions?id=${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${accessToken}` }
+            })
+            if (res.ok) fetchSessions()
+        } catch (err) {
+            console.error(err)
+        } finally {
+            setRevoking(null)
+        }
+    }
+
+    const handleRevokeAll = async () => {
+        if (!confirm('Are you sure you want to revoke ALL other active sessions in the account?')) return
+        setRevoking('all')
+        try {
+            const res = await fetch(`/api/sessions?all=true`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${accessToken}` }
+            })
+            if (res.ok) fetchSessions()
+        } catch (err) {
+            console.error(err)
+        } finally {
+            setRevoking(null)
+        }
+    }
+
+    const activeSessions = sessions.filter(s => s.active)
 
     return (
         <div style={{ maxWidth: 1200, animation: 'fadeIn 0.4s ease' }}>
@@ -53,42 +110,28 @@ export default function SessionsPage() {
                 <div>
                     <h1 style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Activity size={24} color="#3fb950" />
-                        Sessions
+                        Active Sessions
                     </h1>
                     <p style={{ color: '#8b949e', fontSize: 14 }}>
-                        Monitor and manage active user sessions. <span style={{ color: '#3fb950', fontWeight: 600 }}>{activeCount} active</span> out of {MOCK_SESSIONS.length} total.
+                        Monitor and manage all active access sessions across your KIM account.
                     </p>
                 </div>
-                <button className="btn btn-danger" style={{ gap: 8 }}>
-                    <LogOut size={14} /> Revoke all sessions
-                </button>
-            </div>
-
-            {/* Stats row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
-                {[
-                    { label: 'Active Sessions', value: activeCount, color: '#3fb950', icon: Activity },
-                    { label: 'Countries', value: 7, color: '#6366f1', icon: Globe },
-                    { label: 'Mobile Devices', value: 4, color: '#8b5cf6', icon: Smartphone },
-                    { label: 'Suspicious', value: 1, color: '#f85149', icon: Shield },
-                ].map((s, i) => (
-                    <div key={i} style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ width: 36, height: 36, borderRadius: 8, background: `${s.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <s.icon size={16} color={s.color} />
-                        </div>
-                        <div>
-                            <div style={{ fontWeight: 800, fontSize: 20, color: '#f0f6fc' }}>{s.value}</div>
-                            <div style={{ fontSize: 12, color: '#484f58' }}>{s.label}</div>
-                        </div>
-                    </div>
-                ))}
+                <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={fetchSessions} className="btn btn-secondary" style={{ gap: 8 }}>
+                        <RefreshCw size={14} /> Refresh
+                    </button>
+                    <button onClick={handleRevokeAll} className="btn btn-danger" style={{ gap: 8 }} disabled={revoking === 'all'}>
+                        {revoking === 'all' ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
+                        Revoke all others
+                    </button>
+                </div>
             </div>
 
             {/* Filters */}
-            <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-                <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 24, alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1, maxWidth: 340 }}>
                     <Search size={14} color="#484f58" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
-                    <input type="text" placeholder="Search sessions..." value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingLeft: 36, height: 38, fontSize: 13 }} />
+                    <input type="text" placeholder="Search sessions by IP or user..." value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingLeft: 36, height: 38, fontSize: 13 }} />
                 </div>
                 <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 3 }}>
                     {(['all', 'active', 'inactive'] as const).map(f => (
@@ -107,23 +150,41 @@ export default function SessionsPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
-                            {['User', 'Device / Browser', 'Location', 'IP Address', 'Last active', 'Status', 'Actions'].map(h => (
+                            {['User', 'Device / Browser', 'Location', 'IP Address', 'Last active', 'Status', ''].map(h => (
                                 <th key={h} style={{ padding: '12px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#484f58', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
-                        {filtered.map(session => {
-                            const { browser, os } = parseUserAgent(session.userAgent)
+                        {loading ? (
+                            <tr><td colSpan={7} style={{ padding: 60, textAlign: 'center' }}>
+                                <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto 12px', color: '#484f58' }} />
+                                <p style={{ color: '#484f58', fontSize: 13 }}>Loading sessions...</p>
+                            </td></tr>
+                        ) : sessions.length === 0 ? (
+                            <tr><td colSpan={7} style={{ padding: 60, textAlign: 'center', color: '#484f58', fontSize: 14 }}>No sessions found.</td></tr>
+                        ) : sessions.map(session => {
+                            const { browser, os } = parseUserAgent(session.userAgent || '')
+                            const userName = session.user.firstName ? `${session.user.firstName} ${session.user.lastName || ''}` : session.user.email
                             return (
                                 <tr key={session.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
                                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
                                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                 >
-                                    <td style={{ padding: '14px 20px', fontSize: 13, color: '#8b949e', fontFamily: 'monospace' }}>{session.userEmail}</td>
                                     <td style={{ padding: '14px 20px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#f0f6fc' }}>
-                                            <DeviceIcon ua={session.userAgent} />
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                            <div className="avatar" style={{ width: 32, height: 32, borderRadius: 8, fontSize: 12, background: 'rgba(255,255,255,0.05)', color: '#8b949e' }}>
+                                                {getInitials(userName)}
+                                            </div>
+                                            <div style={{ overflow: 'hidden', maxWidth: 180 }}>
+                                                <div style={{ fontSize: 13, fontWeight: 600, color: '#f0f6fc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
+                                                <div style={{ fontSize: 11, color: '#484f58', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.user.email}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style={{ padding: '14px 20px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#f0f6fc' }}>
+                                            <div style={{ color: '#8b949e' }}><DeviceIcon ua={session.userAgent} /></div>
                                             <div>
                                                 <div style={{ fontWeight: 500 }}>{browser}</div>
                                                 <div style={{ fontSize: 11, color: '#484f58' }}>{os}</div>
@@ -131,29 +192,45 @@ export default function SessionsPage() {
                                         </div>
                                     </td>
                                     <td style={{ padding: '14px 20px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#8b949e' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#8b949e' }}>
                                             <FlagEmoji country={session.country} />
                                             <div>
-                                                <div>{session.city}</div>
-                                                <div style={{ fontSize: 11, color: '#484f58' }}>{session.country}</div>
+                                                <div style={{ color: '#f0f6fc', fontWeight: 500 }}>{session.city || 'Unknown'}</div>
+                                                <div style={{ fontSize: 11, color: '#484f58' }}>{session.country || 'Unknown'}</div>
                                             </div>
                                         </div>
                                     </td>
-                                    <td style={{ padding: '14px 20px', fontSize: 12, color: '#484f58', fontFamily: 'monospace' }}>{session.ipAddress}</td>
-                                    <td style={{ padding: '14px 20px', fontSize: 12, color: '#484f58' }}>{formatRelativeTime(session.lastActiveAt)}</td>
-                                    <td style={{ padding: '14px 20px' }}>
+                                    <td style={{ padding: '14px 20px', fontSize: 12, color: '#8b949e', fontFamily: 'monospace' }}>{session.ipAddress || '—'}</td>
+                                    <td style={{ padding: '14px 20px', fontSize: 12, color: '#8b949e' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <div className={`status-dot ${session.active ? 'status-dot-online' : 'status-dot-offline'}`} />
-                                            <span style={{ fontSize: 12, color: session.active ? '#3fb950' : '#484f58' }}>
-                                                {session.active ? 'Active' : 'Expired'}
-                                            </span>
+                                            <Clock size={12} />
+                                            {formatRelativeTime(session.lastActiveAt)}
                                         </div>
                                     </td>
                                     <td style={{ padding: '14px 20px' }}>
-                                        {session.active && (
-                                            <button className="btn btn-danger btn-sm" style={{ gap: 6 }}>
-                                                <LogOut size={11} /> Revoke
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <div className={`status-dot ${session.active ? 'status-dot-online' : 'status-dot-offline'}`} />
+                                            <span style={{ fontSize: 12, color: session.active ? '#3fb950' : '#484f58', fontWeight: 600 }}>
+                                                {session.active ? (session.isCurrent ? 'Current' : 'Active') : 'Expired'}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                                        {!session.isCurrent && session.active && (
+                                            <button
+                                                onClick={() => handleRevoke(session.id)}
+                                                className="btn btn-ghost btn-icon"
+                                                style={{ color: '#f85149', background: 'rgba(248,81,73,0.05)' }}
+                                                disabled={revoking === session.id}
+                                                title="Revoke session"
+                                            >
+                                                {revoking === session.id ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
                                             </button>
+                                        )}
+                                        {session.isCurrent && (
+                                            <div style={{ color: '#3fb950' }} title="Current Session">
+                                                <Shield size={16} />
+                                            </div>
                                         )}
                                     </td>
                                 </tr>
@@ -161,6 +238,15 @@ export default function SessionsPage() {
                         })}
                     </tbody>
                 </table>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                    <span style={{ fontSize: 12, color: '#484f58' }}>
+                        Showing {sessions.length} sessions
+                    </span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setPagination(p => ({ ...p, page: Math.max(1, p.page - 1) }))} disabled={pagination.page === 1} className="btn btn-secondary btn-sm" style={{ fontSize: 12 }}>← Prev</button>
+                        <button onClick={() => setPagination(p => ({ ...p, page: Math.min(p.totalPages, p.page + 1) }))} disabled={pagination.page >= pagination.totalPages} className="btn btn-secondary btn-sm" style={{ fontSize: 12 }}>Next →</button>
+                    </div>
+                </div>
             </div>
         </div>
     )
