@@ -60,8 +60,11 @@ export default function RolesPage() {
             } else {
                 setError(data.error || 'Failed to fetch roles')
             }
-        } catch { setError('Failed to connect to server') }
-        finally { setIsLoading(false) }
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to connect to server')
+        } finally {
+            setIsLoading(false)
+        }
     }
 
     useEffect(() => { fetchRoles() }, [])
@@ -93,9 +96,12 @@ export default function RolesPage() {
                 await fetchRoles()
                 setShowModal(null)
                 setFormData({ name: '', description: '', permissions: [] })
-            } else { setError(data.error || 'Action failed') }
-        } catch { setError('Network error. Please try again.') }
-        finally { setIsSaving(false) }
+            }
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Network error. Please try again.')
+        } finally {
+            setIsSaving(false)
+        }
     }
 
     const openCreate = () => { setFormData({ name: '', description: '', permissions: [] }); setError(null); setShowModal({ type: 'create' }) }

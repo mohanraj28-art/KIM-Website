@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { sendMagicLinkEmail } from '@/lib/email'
 import { rateLimit } from '@/lib/rate-limit'
+import { createSession } from '@/lib/auth/auth'
 import { v4 as uuidv4 } from 'uuid'
 import { z } from 'zod'
 
@@ -66,11 +67,36 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'This link has expired. Please request a new one.' }, { status: 400 })
     }
 
+    // Find user by email
+    const user = await prisma.user.findFirst({
+        where: { email: verificationToken.email! }
+    })
+
+    if (!user) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
     // Mark as used
     await prisma.verificationToken.update({
         where: { id: verificationToken.id },
         data: { usedAt: new Date() }
     })
 
-    return NextResponse.json({ success: true, email: verificationToken.email })
+    // Create session
+    const userAgent = req.headers.get('user-agent') ?? undefined
+    const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
+    const sessionData = await createSession(user.id, user.accountId, user.email, ip, userAgent)
+
+    const response = NextResponse.redirect(new URL('/dashboard', req.url))
+
+    // Set cookies
+    response.cookies.set('kaappu_token', sessionData.accessToken, {
+        httpOnly: true,
+        secure: false, // development localhost
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 15,
+    })
+
+    return response
 }

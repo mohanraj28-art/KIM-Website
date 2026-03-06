@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { withAuth, successResponse } from '@/lib/api-helpers'
 import { prisma } from '@/lib/db'
+import { Prisma, AuditResult } from '@/generated/client'
 
 // GET /api/audit-logs
 export const GET = withAuth(async (req: NextRequest, ctx) => {
@@ -12,12 +13,12 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
     const action = searchParams.get('action')
     const skip = (page - 1) * limit
 
-    const where: any = {
+    const where: Prisma.AuditLogWhereInput = {
         accountId: ctx.accountId,
     }
 
     if (userId) where.userId = userId
-    if (result) where.result = result
+    if (result) where.result = result as AuditResult
     if (action) where.action = { contains: action, mode: 'insensitive' }
 
     const [logs, total] = await Promise.all([

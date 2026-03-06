@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import { withAuth, successResponse, errorResponse } from '@/lib/api-helpers'
+import { stripe } from '@/lib/stripe'
 import { prisma } from '@/lib/db'
+import { Prisma, SubscriptionStatus } from '@/generated/client'
 
 // GET /api/sessions - list sessions for current account/user
 export const GET = withAuth(async (req: NextRequest, ctx) => {
@@ -12,7 +14,7 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
     const activeOnly = searchParams.get('active') !== 'false'
     const skip = (page - 1) * limit
 
-    const where: any = {
+    const where: Prisma.SessionWhereInput = {
         accountId: ctx.accountId,
     }
 

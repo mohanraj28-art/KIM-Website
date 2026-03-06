@@ -92,8 +92,8 @@ export default function TenantsPage() {
             } else {
                 setCreateError(data.error)
             }
-        } catch (err: any) {
-            setCreateError(err.message)
+        } catch (err: unknown) {
+            setCreateError(err instanceof Error ? err.message : 'An unexpected error occurred')
         } finally {
             setCreating(false)
         }

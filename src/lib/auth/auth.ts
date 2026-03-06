@@ -133,8 +133,13 @@ export async function signInWithPassword(
     ipAddress?: string,
     userAgent?: string
 ): Promise<AuthResult> {
-    const user = await prisma.user.findFirst({
-        where: { email },
+    const user = await prisma.user.findUnique({
+        where: {
+            accountId_email: {
+                accountId,
+                email
+            }
+        },
         include: {
             passwords: {
                 orderBy: { createdAt: 'desc' },
@@ -145,13 +150,18 @@ export async function signInWithPassword(
     })
 
     if (!user) {
-        console.log('[SignIn] User not found during sign-in:', email);
+        // Fallback for global search if needed, but per-account is safer
+        const globalUser = await prisma.user.findFirst({ where: { email } })
+        if (globalUser) {
+            console.log(`[SignIn] User ${email} found in account ${globalUser.accountId}, but login requested for ${accountId}`);
+        } else {
+            console.log('[SignIn] User not found during sign-in:', email);
+        }
         throw new Error('Invalid email or password')
     }
 
-    // If the user exists but isn't linked to this account yet, link them now
+    // Account check already handled by findUnique, but double safety
     if (user.accountId !== accountId) {
-        // In this multi-account model, a user belongs to one account. 
         throw new Error('Invalid email or password for this workspace')
     }
 

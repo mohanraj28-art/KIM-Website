@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { prisma } from '@/lib/db'
-import { SubscriptionStatus } from '@prisma/client'
+import type Stripe from 'stripe'
+import { SubscriptionStatus } from '@/generated/client'
 
 export async function POST(req: NextRequest) {
     const body = await req.arrayBuffer()
@@ -27,15 +28,15 @@ export async function POST(req: NextRequest) {
     try {
         switch (event.type) {
             case 'checkout.session.completed': {
-                const session = event.data.object as any
+                const session = event.data.object as Stripe.Checkout.Session
                 const accountId = session.metadata?.accountId
                 if (!accountId) break
 
                 await prisma.account.update({
                     where: { id: accountId },
                     data: {
-                        stripeCustomerId: session.customer ?? null,
-                        stripeSubscriptionId: session.subscription ?? null,
+                        stripeCustomerId: session.customer as string ?? null,
+                        stripeSubscriptionId: session.subscription as string ?? null,
                         subscriptionStatus: 'ACTIVE' as SubscriptionStatus,
                     }
                 })
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
             }
 
             case 'customer.subscription.updated': {
-                const sub = event.data.object as any
+                const sub = event.data.object as Stripe.Subscription
                 const accountId = sub.metadata?.accountId
                 if (!accountId) break
 
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
             }
 
             case 'customer.subscription.deleted': {
-                const sub = event.data.object as any
+                const sub = event.data.object as Stripe.Subscription
                 const accountId = sub.metadata?.accountId
                 if (!accountId) break
 
@@ -85,10 +86,10 @@ export async function POST(req: NextRequest) {
             }
 
             case 'invoice.payment_failed': {
-                const invoice = event.data.object as any
+                const invoice = event.data.object as Stripe.Invoice
                 if (invoice.customer) {
                     await prisma.account.updateMany({
-                        where: { stripeCustomerId: invoice.customer },
+                        where: { stripeCustomerId: invoice.customer as string },
                         data: {
                             subscriptionStatus: 'PAST_DUE' as SubscriptionStatus,
                         }

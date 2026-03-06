@@ -63,17 +63,16 @@ export default function SignUpPage() {
             >
                 {/* Brand Identity */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 32 }}>
-                    <div style={{
-                        width: 48, height: 48, borderRadius: 14, marginBottom: 16,
-                        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 24, fontWeight: 900, color: 'white',
-                        boxShadow: '0 0 30px rgba(99,102,241,0.4)',
-                    }}>K</div>
-                    <h1 style={{ fontFamily: 'Plus Jakarta Sans', fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: '#f0f6fc' }}>
-                        Create Identity
-                    </h1>
-                    <p style={{ color: '#8b949e', fontSize: 13, marginTop: 4, textAlign: 'center' }}>
+                    <img
+                        src="/kaappu-logo.png"
+                        alt="KAAPPU Logo"
+                        style={{
+                            height: 120,
+                            marginBottom: 4,
+                            filter: 'drop-shadow(0 0 20px rgba(99,102,241,0.3))'
+                        }}
+                    />
+                    <p style={{ color: '#8b949e', fontSize: 13, marginTop: 12, textAlign: 'center' }}>
                         Enroll in the Kaappu Identity Platform (KIP).
                     </p>
                 </div>

@@ -208,7 +208,7 @@ export default function DashboardPage() {
                 sparkColor: 'text-indigo-400',
             },
             {
-                title: 'Organizations',
+                title: 'Tenants',
                 value: stats.totalTenants.toLocaleString(),
                 change: `+${stats.newTenantsThisMonth} new`,
                 trend: 'up',
@@ -274,7 +274,7 @@ export default function DashboardPage() {
                             <span className="text-3xl">👋</span>
                         </h1>
                         <p className="text-slate-400 text-base font-medium max-w-lg">
-                            Your identity platform is operating normally. Here's a real-time snapshot of what's happening.
+                            Your identity platform is operating normally. Here&apos;s a real-time snapshot of what&apos;s happening.
                         </p>
                     </div>
 

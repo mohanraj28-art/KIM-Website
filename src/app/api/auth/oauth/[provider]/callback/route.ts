@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { createSession } from '@/lib/auth/auth'
-import { OAuthProvider } from '@prisma/client'
+import { OAuthProvider } from '@/generated/client'
 
 const OAUTH_CONFIGS: Record<string, {
     tokenUrl: string

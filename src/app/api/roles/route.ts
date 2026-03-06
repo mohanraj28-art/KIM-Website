@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { withAuth, successResponse, errorResponse } from '@/lib/api-helpers'
 import { prisma } from '@/lib/db'
+import { Prisma } from '@/generated/client'
 import { z } from 'zod'
 
 const createRoleSchema = z.object({
@@ -75,8 +76,6 @@ export const POST = withAuth(async (req: NextRequest, ctx) => {
             })
 
             // Create permissions if they don't exist and link them
-            // In a real system, permissions should already exist in the database.
-            // For now, we'll try to find or create them for demo purposes.
             for (const permKey of data.permissions) {
                 let permission = await tx.permission.findUnique({
                     where: { key: permKey }
@@ -115,8 +114,12 @@ export const POST = withAuth(async (req: NextRequest, ctx) => {
         })
 
         return successResponse(newRole, 201)
-    } catch (error: any) {
-        const message = error instanceof z.ZodError ? error.issues[0].message : error.message
-        return errorResponse(message || 'Failed to create role')
+    } catch (error: unknown) {
+        const message = error instanceof z.ZodError
+            ? error.issues[0].message
+            : error instanceof Error
+                ? error.message
+                : 'Failed to create role'
+        return errorResponse(message)
     }
 })

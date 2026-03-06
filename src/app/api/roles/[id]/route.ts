@@ -90,8 +90,9 @@ export const PATCH = withAuth(async (req: NextRequest, ctx) => {
         })
 
         return successResponse(updatedRole)
-    } catch (error: any) {
-        return errorResponse(error.message || 'Failed to update role')
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Failed to update role'
+        return errorResponse(message)
     }
 })
 

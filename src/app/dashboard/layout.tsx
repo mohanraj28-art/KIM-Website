@@ -17,7 +17,8 @@ import { TenantSwitcher } from '@/components/TenantSwitcher'
 const NAV_ITEMS = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Overview', group: 'NAVIGATION' },
     { href: '/dashboard/users', icon: Users, label: 'Users', group: 'NAVIGATION' },
-    { href: '/dashboard/tenants', icon: Building2, label: 'Organizations', group: 'NAVIGATION' },
+    { href: '/dashboard/groups', icon: LayoutGrid, label: 'Groups', group: 'NAVIGATION' },
+    { href: '/dashboard/tenants', icon: Building2, label: 'Tenants', group: 'NAVIGATION' },
     { href: '/dashboard/sessions', icon: Activity, label: 'Sessions', group: 'NAVIGATION' },
     { href: '/dashboard/audit-logs', icon: FileText, label: 'Audit Logs', group: 'NAVIGATION' },
     { href: '/dashboard/roles', icon: Shield, label: 'Roles & Permissions', group: 'NAVIGATION' },

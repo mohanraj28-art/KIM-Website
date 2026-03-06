@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -40,7 +40,7 @@ const AppleIcon = () => (
     </svg>
 )
 
-export default function SignInPage() {
+function SignInContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const { signIn } = useAuth()
@@ -101,17 +101,16 @@ export default function SignInPage() {
             >
                 {/* Brand Identity */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 32 }}>
-                    <div style={{
-                        width: 48, height: 48, borderRadius: 14, marginBottom: 16,
-                        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 24, fontWeight: 900, color: 'white',
-                        boxShadow: '0 0 30px rgba(99,102,241,0.4)',
-                    }}>K</div>
-                    <h1 style={{ fontFamily: 'Plus Jakarta Sans', fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em', color: '#f0f6fc' }}>
-                        Sign in to KIP
-                    </h1>
-                    <p style={{ color: '#8b949e', fontSize: 13, marginTop: 4 }}>
+                    <img
+                        src="/kaappu-logo.png"
+                        alt="KAAPPU Logo"
+                        style={{
+                            height: 120,
+                            marginBottom: 4,
+                            filter: 'drop-shadow(0 0 20px rgba(99,102,241,0.3))'
+                        }}
+                    />
+                    <p style={{ color: '#8b949e', fontSize: 13, marginTop: 12, textAlign: 'center' }}>
                         Welcome back! Please sign in to continue.
                     </p>
                 </div>
@@ -268,5 +267,17 @@ export default function SignInPage() {
                 </div>
             </motion.div>
         </div>
+    )
+}
+
+export default function SignInPage() {
+    return (
+        <Suspense fallback={
+            <div style={{ background: '#030712', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Loader2 size={40} className="animate-spin text-indigo-500" />
+            </div>
+        }>
+            <SignInContent />
+        </Suspense>
     )
 }

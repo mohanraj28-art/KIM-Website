@@ -1,20 +1,22 @@
 // Prisma client singleton for Next.js
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../generated/client'
 
 declare global {
   // eslint-disable-next-line no-var
-  var __prisma: PrismaClient | undefined
+  var __db: PrismaClient | undefined
 }
 
-export const prisma: PrismaClient =
-  global.__prisma ??
+export const db: PrismaClient =
+  global.__db ??
   new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   })
 
 if (process.env.NODE_ENV !== 'production') {
-  global.__prisma = prisma
+  global.__db = db
 }
+
+export const prisma = db
 
 /**
  * Helper to handle Prisma errors or common data transformations

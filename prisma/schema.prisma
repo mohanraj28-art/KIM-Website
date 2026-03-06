@@ -3,6 +3,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/client"
 }
 
 datasource db {
@@ -47,6 +48,7 @@ model Account {
   apiKeys        ApiKey[]
   emailTemplates EmailTemplate[]
   invitations    Invitation[]
+  groups         Group[]
 
   @@map("accounts")
 }
@@ -98,6 +100,7 @@ model User {
   notifications       Notification[]
   devices             Device[]
   sentInvitations     Invitation[] @relation("InvitationSender")
+  groupMembers        GroupMember[]
 
   @@unique([accountId, email])
   @@unique([accountId, username])
@@ -509,6 +512,33 @@ model Notification {
 // ============================================================
 // ENUMS
 // ============================================================
+model Group {
+  id          String   @id @default(cuid())
+  accountId   String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  members GroupMember[]
+
+  @@unique([accountId, name])
+  @@map("groups")
+}
+
+model GroupMember {
+  id      String @id @default(cuid())
+  groupId String
+  userId  String
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
 enum Plan {
   FREE
   STARTER

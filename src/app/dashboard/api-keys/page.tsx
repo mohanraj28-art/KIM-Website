@@ -46,7 +46,7 @@ export default function ApiKeysPage() {
             if (data.success) {
                 setKeys(data.data)
             }
-        } catch (err) {
+        } catch (err: unknown) {
             console.error(err)
         } finally {
             setLoading(false)
@@ -78,8 +78,8 @@ export default function ApiKeysPage() {
             } else {
                 setCreateError(data.error)
             }
-        } catch (err: any) {
-            setCreateError(err.message)
+        } catch (err: unknown) {
+            setCreateError(err instanceof Error ? err.message : 'An unexpected error occurred')
         } finally {
             setCreating(false)
         }

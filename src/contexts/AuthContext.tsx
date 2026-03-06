@@ -56,27 +56,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const refreshUser = useCallback(async () => {
         const token = localStorage.getItem('kaappu_token')
         if (!token) {
+            console.log('[Auth] No token found in localStorage');
             setIsLoaded(true)
             return
         }
 
         try {
+            console.log('[Auth] Attempting to refresh user with token...');
             const res = await fetch('/api/auth/me', {
                 headers: { Authorization: `Bearer ${token}` },
             })
             if (res.ok) {
                 const data = await res.json()
+                console.log('[Auth] User successfully refreshed:', data.data.user.email);
                 setUser(data.data.user)
                 setAccessToken(token)
-                if (data.data.tenant) {
-                    setTenant(data.data.tenant)
-                }
+                setTenant(data.data.tenant || null)
             } else {
+                console.warn('[Auth] Session invalid or expired (401). Clearing tokens.');
                 localStorage.removeItem('kaappu_token')
                 localStorage.removeItem('kaappu_refresh_token')
+                setUser(null)
+                setAccessToken(null)
+                setTenant(null)
             }
-        } catch {
-            // Silently fail
+        } catch (err) {
+            console.error('[Auth] Refresh user error:', err)
         } finally {
             setIsLoaded(true)
         }
@@ -87,18 +92,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [refreshUser])
 
     const signIn = async (email: string, password: string) => {
+        console.log('[Auth] Signing in user:', email);
         const res = await fetch('/api/auth/sign-in', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, accountId: DEFAULT_ACCOUNT_ID }),
         })
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error)
+        if (!res.ok) {
+            console.error('[Auth] Sign-in failed:', data.error);
+            throw new Error(data.error)
+        }
 
+        console.log('[Auth] Sign-in successful!');
         localStorage.setItem('kaappu_token', data.data.accessToken)
         localStorage.setItem('kaappu_refresh_token', data.data.refreshToken)
         setUser(data.data.user)
         setAccessToken(data.data.accessToken)
+        setTenant(data.data.tenant || null)
     }
 
     const signUp = async (formData: SignUpData) => {
